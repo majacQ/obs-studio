@@ -392,6 +392,16 @@ OBSBasic::OBSBasic(QWidget *parent)
 		SLOT(PreviewDisabledMenu(const QPoint &)));
 	connect(ui->enablePreviewButton, SIGNAL(clicked()), this,
 		SLOT(TogglePreview()));
+
+	connect(ui->scenes->model(),
+		SIGNAL(rowsMoved(QModelIndex, int, int, QModelIndex, int)),
+		this,
+		SLOT(ScenesReordered(const QModelIndex &, int, int,
+				     const QModelIndex &, int)));
+
+#ifdef __APPLE__
+	ui->recordButton->setAttribute(Qt::WA_LayoutUsesWidgetRect);
+#endif
 }
 
 static void SaveAudioDevice(const char *name, int channel, obs_data_t *parent,
@@ -7538,6 +7548,10 @@ void OBSBasic::UpdatePause(bool activate)
 				   QVariant(QStringLiteral("pauseIconSmall")));
 		connect(pause.data(), &QAbstractButton::clicked, this,
 			&OBSBasic::PauseToggled);
+#ifdef __APPLE__
+		pause->setAttribute(Qt::WA_LayoutUsesWidgetRect);
+#endif
+
 		ui->recordingLayout->addWidget(pause.data());
 	} else {
 		pause.reset();
@@ -7603,4 +7617,16 @@ void OBSBasic::CheckDiskSpaceRemaining()
 
 		DiskSpaceMessage();
 	}
+}
+
+void OBSBasic::ScenesReordered(const QModelIndex &parent, int start, int end,
+			       const QModelIndex &destination, int row)
+{
+	UNUSED_PARAMETER(parent);
+	UNUSED_PARAMETER(start);
+	UNUSED_PARAMETER(end);
+	UNUSED_PARAMETER(destination);
+	UNUSED_PARAMETER(row);
+
+	OBSProjector::UpdateMultiviewProjectors();
 }

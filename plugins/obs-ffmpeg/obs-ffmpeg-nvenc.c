@@ -258,21 +258,30 @@ static bool nvenc_update(struct nvenc_encoder *enc, obs_data_t *settings,
 
 	switch (info.colorspace) {
 	case VIDEO_CS_601:
-		enc->context->color_trc = AVCOL_TRC_SMPTE170M;
 		enc->context->color_primaries = AVCOL_PRI_SMPTE170M;
+		enc->context->color_trc = AVCOL_TRC_SMPTE170M;
 		enc->context->colorspace = AVCOL_SPC_SMPTE170M;
 		break;
 	case VIDEO_CS_DEFAULT:
 	case VIDEO_CS_709:
-		enc->context->color_trc = AVCOL_TRC_BT709;
 		enc->context->color_primaries = AVCOL_PRI_BT709;
+		enc->context->color_trc = AVCOL_TRC_BT709;
 		enc->context->colorspace = AVCOL_SPC_BT709;
 		break;
 	case VIDEO_CS_SRGB:
-		enc->context->color_trc = AVCOL_TRC_IEC61966_2_1;
 		enc->context->color_primaries = AVCOL_PRI_BT709;
+		enc->context->color_trc = AVCOL_TRC_IEC61966_2_1;
 		enc->context->colorspace = AVCOL_SPC_BT709;
 		break;
+	case VIDEO_CS_2100_PQ:
+		enc->context->color_primaries = AVCOL_PRI_BT2020;
+		enc->context->color_trc = AVCOL_TRC_SMPTE2084;
+		enc->context->colorspace = AVCOL_SPC_BT2020_NCL;
+		break;
+	case VIDEO_CS_2100_HLG:
+		enc->context->color_primaries = AVCOL_PRI_BT2020;
+		enc->context->color_trc = AVCOL_TRC_ARIB_STD_B67;
+		enc->context->colorspace = AVCOL_SPC_BT2020_NCL;
 	}
 
 	if (keyint_sec)
@@ -349,7 +358,7 @@ static void nvenc_destroy(void *data)
 		flush_remaining_packets(enc);
 
 	av_packet_free(&enc->packet);
-	avcodec_close(enc->context);
+	avcodec_free_context(&enc->context);
 	av_frame_unref(enc->vframe);
 	av_frame_free(&enc->vframe);
 	da_free(enc->buffer);

@@ -149,8 +149,12 @@ static inline enum video_format convert_pixel_format(int f)
 		return VIDEO_FORMAT_RGBA;
 	case AV_PIX_FMT_BGRA:
 		return VIDEO_FORMAT_BGRA;
+	case AV_PIX_FMT_YUV420P10LE:
+		return VIDEO_FORMAT_I010;
 	case AV_PIX_FMT_BGR0:
 		return VIDEO_FORMAT_BGRX;
+	case AV_PIX_FMT_P010LE:
+		return VIDEO_FORMAT_P010;
 	default:;
 	}
 
@@ -289,6 +293,9 @@ convert_color_space(enum AVColorSpace s, enum AVColorTransferCharacteristic trc)
 	case AVCOL_SPC_SMPTE170M:
 	case AVCOL_SPC_SMPTE240M:
 		return VIDEO_CS_601;
+	case AVCOL_SPC_BT2020_NCL:
+		return (trc == AVCOL_TRC_ARIB_STD_B67) ? VIDEO_CS_2100_HLG
+						       : VIDEO_CS_2100_PQ;
 	default:
 		return VIDEO_CS_DEFAULT;
 	}
@@ -361,7 +368,9 @@ bool ffmpeg_decode_video(struct ffmpeg_decode *decode, uint8_t *data,
 		frame->linesize[i] = decode->frame->linesize[i];
 	}
 
-	frame->format = convert_pixel_format(decode->frame->format);
+	const enum video_format format =
+		convert_pixel_format(decode->frame->format);
+	frame->format = format;
 
 	if (range == VIDEO_RANGE_DEFAULT) {
 		range = (decode->frame->color_range == AVCOL_RANGE_JPEG)
@@ -372,8 +381,8 @@ bool ffmpeg_decode_video(struct ffmpeg_decode *decode, uint8_t *data,
 	const enum video_colorspace cs = convert_color_space(
 		decode->frame->colorspace, decode->frame->color_trc);
 
-	const bool success = video_format_get_parameters(
-		cs, range, frame->color_matrix, frame->color_range_min,
+	const bool success = video_format_get_parameters_for_format(
+		cs, range, format, frame->color_matrix, frame->color_range_min,
 		frame->color_range_max);
 	if (!success) {
 		blog(LOG_ERROR,

@@ -41,6 +41,8 @@ class OBSHotkeyWidget;
 
 #include "ui_OBSBasicSettings.h"
 
+#include <json11.hpp>
+
 #define VOLUME_METER_DECAY_FAST 23.53
 #define VOLUME_METER_DECAY_MEDIUM 11.76
 #define VOLUME_METER_DECAY_SLOW 8.57
@@ -106,6 +108,10 @@ private:
 	std::unique_ptr<Ui::OBSBasicSettings> ui;
 
 	std::shared_ptr<Auth> auth;
+
+	inline void GetServicesJson();
+	json11::Json servicesRoot;
+	bool servicesLoaded = false;
 
 	bool generalChanged = false;
 	bool stream1Changed = false;
@@ -222,8 +228,11 @@ private:
 
 	void LoadEncoderTypes();
 	void LoadColorRanges();
+	void LoadColorSpaces();
 	void LoadFormats();
 	void ReloadCodecs(const ff_format_desc *formatDesc);
+
+	void UpdateColorFormatSpaceWarning();
 
 	void LoadGeneralSettings();
 	void LoadStream1Settings();
@@ -360,6 +369,7 @@ private slots:
 	void on_advOutFFType_currentIndexChanged(int idx);
 
 	void on_colorFormat_currentIndexChanged(const QString &text);
+	void on_colorSpace_currentIndexChanged(const QString &text);
 
 	void on_filenameFormatting_textEdited(const QString &text);
 	void on_outputResolution_editTextChanged(const QString &text);
@@ -389,6 +399,7 @@ private slots:
 
 	void UpdateAutomaticReplayBufferCheckboxes();
 
+	void AdvOutSplitFileChanged();
 	void AdvOutRecCheckWarnings();
 
 	void SimpleRecordingQualityChanged();

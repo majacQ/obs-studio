@@ -12,20 +12,21 @@ on:
     branches: [master]
 
 env:
-  CACHE_REVISION: '004'
-  CEF_BUILD_VERSION_MAC: '4638'
-  CEF_HASH_MAC_X86_64: '2fe4cc39b1373b85086e4030dedd2a250d5dbbed8c2f8780002d6cd6214b6bc2'
-  CEF_HASH_MAC_ARM64: '27809aac427b9c97b0dadcab04371c5f8211f36c6f3e1caa00822de89c5ed249'
-  CEF_BUILD_VERSION_LINUX: '4638'
-  CEF_BUILD_VERSION_WIN: '4638'
-  QT_VERSION_MAC: '5.15.2'
-  QT_HASH_MAC_X86_64: '35a58fee8dfd70d3d2dcc0ae0b77132c04a451c6f041a02dc41b207b375fc74b'
-  QT_HASH_MAC_ARM64: 'e99146b9c7775c245a2d22f2ef24fc111fccd71bad0f03b64db707124ffb8707'
-  QT_VERSION_WIN: '5.15.2'
-  DEPS_VERSION_MAC: '2022-02-13'
-  DEPS_HASH_MAC_X86_64: '1a8715d66e664b857942deaded0dc46c4f6cd22e88f01ed1188f3bd3fcf632c4'
-  DEPS_HASH_MAC_ARM64: '2cfcaf05765400c696908f242aea87b6e1848e1a48cd3edc2eb7f8cb249c9d48'
-  DEPS_VERSION_WIN: '2022-03-16'
+  CACHE_REVISION: '006'
+  CEF_BUILD_VERSION_MAC: '5060'
+  CEF_HASH_MAC_X86_64: '88b950aa0bfc001061c35e7f1f3fefba856a6afb35e38b2b7b42ddd8dd239182'
+  CEF_HASH_MAC_ARM64: '98679b92eea6ea9959ac5aa54f46ca60681d8a86c768c35f496dbdd409bf0642'
+  CEF_BUILD_VERSION_LINUX: '5060'
+  CEF_BUILD_VERSION_WIN: '5060'
+  QT_VERSION_MAC: '6.3.1'
+  QT_HASH_MAC_X86_64: 'a83f72a11023b03b6cb2dc365f0a66ad9df31163bbb4fe2df32d601856a9fad3'
+  QT_HASH_MAC_ARM64: '2f30af90c049670a5660656adbb440668aa1b0567f75a5f29e1def9108928403'
+  QT_HASH_MAC_UNIVERSAL: '252e6684f43ab9c6f262c73af739e2296ce391b998da2c4ee04c254aaa07db18'
+  QT_VERSION_WIN: '6.3.1'
+  DEPS_VERSION_MAC: '2022-08-02'
+  DEPS_HASH_MAC_X86_64: '7637e52305e6fc53014b5aabd583f1a4490b1d97450420e977cae9a336a29525'
+  DEPS_HASH_MAC_ARM64: '755e0fa69b17a3ae444e1befa9d91d77e3cafe628fbd1c6333686091826595cd'
+  DEPS_VERSION_WIN: '2022-08-02'
   VLC_VERSION_MAC: '3.0.8'
   VLC_HASH_MAC: 'e0149ef4a20a19b9ecd87309c2d27787ee3f47dfd47c6639644bc1f6fd95bdf6'
   VLC_VERSION_WIN: '3.0.0-git'
@@ -41,7 +42,7 @@ env:
 jobs:
   clang_check:
     name: '01 - Code Format Check'
-    runs-on: [ubuntu-latest]
+    runs-on: [ubuntu-22.04]
     steps:
       - name: 'Checkout'
         uses: actions/checkout@v3
@@ -49,7 +50,7 @@ jobs:
           submodules: 'recursive'
 
       - name: 'Install clang-format'
-        run: sudo apt-get install -y clang-format-12
+        run: sudo apt-get install -y clang-format-13
 
       - name: 'Run clang-format'
         run: |
@@ -72,7 +73,7 @@ jobs:
     if: always()
     needs: [clang_check]
     env:
-      MACOSX_DEPLOYMENT_TARGET_X86_64: '10.13'
+      MACOSX_DEPLOYMENT_TARGET_X86_64: '10.15'
       MACOSX_DEPLOYMENT_TARGET_ARM64: '11.0'
       SPARKLE_VERSION: '1.26.0'
       SPARKLE_HASH: '8312cbf7528297a49f1b97692c33cb8d33254c396dc51be394e9484e4b6833a0'
@@ -104,7 +105,7 @@ jobs:
 
       - name: 'Restore ccache from cache'
         id: ccache-cache
-        uses: actions/cache@v2.1.7
+        uses: actions/cache@v3
         env:
           CACHE_NAME: 'ccache-cache'
         with:
@@ -113,7 +114,7 @@ jobs:
 
       - name: 'Restore Chromium Embedded Framework from cache'
         id: cef-cache
-        uses: actions/cache@v2.1.7
+        uses: actions/cache@v3
         env:
           CACHE_NAME: 'cef-cache'
         with:
@@ -122,7 +123,7 @@ jobs:
 
       - name: 'Restore VLC dependency from cache'
         id: vlc-cache
-        uses: actions/cache@v2.1.7
+        uses: actions/cache@v3
         env:
           CACHE_NAME: 'vlc-cache'
         with:
@@ -131,7 +132,7 @@ jobs:
 
       - name: 'Restore Sparkle dependency from cache'
         id: sparkle-cache
-        uses: actions/cache@v2.1.7
+        uses: actions/cache@v3
         env:
           CACHE_NAME: 'sparkle-cache'
         with:
@@ -152,7 +153,10 @@ jobs:
             brew uninstall ${REMOVE_FORMULAS}
           fi
 
-          echo "::set-output name=commitHash::$(git rev-parse --short=9 HEAD)"
+          echo "commitHash=$(git rev-parse --short=9 HEAD)" >> $GITHUB_OUTPUT
+
+      - name: 'Switch to Xcode 14.1'
+        run: sudo xcode-select -switch /Applications/Xcode_14.1.app
 
       - name: 'Install dependencies'
         env:
@@ -192,7 +196,7 @@ jobs:
         if: ${{ success() && (github.event_name != 'pull_request' || env.SEEKING_TESTERS == '1') }}
         uses: actions/upload-artifact@v3
         with:
-          name: 'obs-macos-${{ matrix.arch }}-${{ steps.setup.outputs.commitHash }}'
+          name: 'obs-studio-macos-${{ matrix.arch }}-${{ steps.setup.outputs.commitHash }}'
           path: '${{ github.workspace }}/obs-studio/build/${{ env.FILE_NAME }}'
 
   linux_build:
@@ -200,7 +204,7 @@ jobs:
     runs-on: ${{ matrix.ubuntu }}
     strategy:
       matrix:
-        ubuntu: ['ubuntu-20.04', 'ubuntu-18.04']
+        ubuntu: ['ubuntu-20.04', 'ubuntu-22.04']
     if: always()
     needs: [clang_check]
     defaults:
@@ -230,7 +234,7 @@ jobs:
 
       - name: 'Restore ccache from cache'
         id: ccache-cache
-        uses: actions/cache@v2.1.7
+        uses: actions/cache@v3
         env:
           CACHE_NAME: 'ccache-cache'
         with:
@@ -239,7 +243,7 @@ jobs:
 
       - name: 'Restore Chromium Embedded Framework from cache'
         id: cef-cache
-        uses: actions/cache@v2.1.7
+        uses: actions/cache@v3
         env:
           CACHE_NAME: 'cef-cache'
         with:
@@ -249,7 +253,7 @@ jobs:
       - name: 'Setup build environment'
         id: setup
         run: |
-          echo "::set-output name=commitHash::$(git rev-parse --short=9 HEAD)"
+          echo "commitHash=$(git rev-parse --short=9 HEAD)" >> $GITHUB_OUTPUT
 
       - name: 'Install dependencies'
         env:
@@ -269,24 +273,32 @@ jobs:
           CI/linux/03_package_obs.sh
           ARTIFACT_NAME=$(basename $(/usr/bin/find build  -maxdepth 1 -type f -name "obs-studio-*.deb" | sort -rn | head -1))
           echo "FILE_NAME=${ARTIFACT_NAME}" >> $GITHUB_ENV
+          echo "DEBUG_FILE_NAME=${ARTIFACT_NAME//.deb/-dbgsym.ddeb}" >> $GITHUB_ENV
 
       - name: 'Upload build Artifact'
         if: ${{ success() && (github.event_name != 'pull_request' || env.SEEKING_TESTERS == '1') }}
         uses: actions/upload-artifact@v3
         with:
-          name: 'obs-linux-${{ matrix.ubuntu }}-deb-${{ steps.setup.outputs.commitHash }}'
+          name: 'obs-studio-${{ matrix.ubuntu }}-${{ steps.setup.outputs.commitHash }}'
           path: '${{ github.workspace }}/obs-studio/build/${{ env.FILE_NAME }}'
+
+      - name: 'Upload debug symbol Artifact'
+        if: ${{ success() && (github.event_name != 'pull_request' || env.SEEKING_TESTERS == '1') }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: 'obs-studio-${{ matrix.ubuntu }}-${{ steps.setup.outputs.commitHash }}-dbgsym'
+          path: '${{ github.workspace }}/obs-studio/build/${{ env.DEBUG_FILE_NAME }}'
 
   windows_build:
     name: '02 - Windows'
-    runs-on: [windows-2019]
+    runs-on: [windows-2022]
     needs: [clang_check]
     if: always()
     strategy:
       matrix:
         arch: [x64, x86]
     env:
-      CMAKE_GENERATOR: 'Visual Studio 16 2019'
+      CMAKE_GENERATOR: 'Visual Studio 17 2022'
       CMAKE_SYSTEM_VERSION: '10.0.18363.657'
       VIRTUALCAM-GUID: 'A3FCE0F5-3493-419F-958A-ABA1250EC20B'
       BUILD_FOR_DISTRIBUTION: ${{ startsWith(github.ref, 'refs/tags/') && github.event_name != 'pull_request' }}
@@ -312,7 +324,7 @@ jobs:
 
       - name: 'Restore VLC dependency from cache'
         id: vlc-cache
-        uses: actions/cache@v2.1.7
+        uses: actions/cache@v3
         env:
           CACHE_NAME: 'vlc-cache'
         with:
@@ -321,7 +333,7 @@ jobs:
 
       - name: 'Restore Chromium Embedded Framework from cache'
         id: cef-cache
-        uses: actions/cache@v2.1.7
+        uses: actions/cache@v3
         env:
           CACHE_NAME: 'cef-cache'
         with:
@@ -332,7 +344,7 @@ jobs:
         id: setup
         run: |
           $CommitHash = git rev-parse --short=9 HEAD
-          Write-Output "::set-output name=commitHash::${CommitHash}"
+          "commitHash=${CommitHash}" >> $env:GITHUB_OUTPUT
 
       - name: 'Install dependencies'
         env:
@@ -347,14 +359,14 @@ jobs:
         if: ${{ success() && (github.event_name != 'pull_request' || env.SEEKING_TESTERS == '1') }}
         run: |
           CI/windows/03_package_obs.ps1 -BuildArch ${{ matrix.arch }} -Package
-          $ArtifactName = Get-ChildItem -filter "OBS-Studio-*-Win-${{ matrix.arch }}.zip" -File
+          $ArtifactName = Get-ChildItem -filter "obs-studio-*-windows-${{ matrix.arch }}.zip" -File
           Write-Output "FILE_NAME=${ArtifactName}" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: 'Upload build artifact'
         if: ${{ success() && (github.event_name != 'pull_request' || env.SEEKING_TESTERS == '1') }}
         uses: actions/upload-artifact@v3
         with:
-          name: 'obs-win-${{ matrix.arch }}-${{ steps.setup.outputs.commitHash }}'
+          name: 'obs-studio-windows-${{ matrix.arch }}-${{ steps.setup.outputs.commitHash }}'
           path: '${{ env.FILE_NAME }}'
 
   linux_package:
@@ -366,7 +378,7 @@ jobs:
       run:
         shell: bash
     container:
-      image: bilelmoussaoui/flatpak-github-actions:kde-5.15-21.08
+      image: bilelmoussaoui/flatpak-github-actions:kde-6.3
       options: --privileged
     steps:
       - name: 'Check for Github Labels'
@@ -389,6 +401,7 @@ jobs:
       - name: 'Setup build environment'
         if: ${{ success() && (github.event_name != 'pull_request' || env.SEEKING_TESTERS == '1') }}
         run: |
+          git config --global --add safe.directory $GITHUB_WORKSPACE
           echo "OBS_GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_ENV
           echo "OBS_GIT_HASH=$(git rev-parse --short=9 HEAD)" >> $GITHUB_ENV
           echo "OBS_GIT_TAG=$(git describe --tags --abbrev=0)" >> $GITHUB_ENV
@@ -416,7 +429,7 @@ jobs:
         id: setup
         run: |
           $CommitHash = git rev-parse --short=9 HEAD
-          Write-Output "::set-output name=commitHash::${CommitHash}"
+          "commitHash=${CommitHash}" >> $env:GITHUB_OUTPUT
 
       - name: 'Add msbuild to PATH'
         uses: microsoft/setup-msbuild@v1.1
@@ -424,12 +437,12 @@ jobs:
       - name: 'Download 64-bit artifact'
         uses: actions/download-artifact@v3
         with:
-          name: 'obs-win-x64-${{ steps.setup.outputs.commitHash }}'
+          name: 'obs-studio-windows-x64-${{ steps.setup.outputs.commitHash }}'
 
       - name: 'Download 32-bit artifact'
         uses: actions/download-artifact@v3
         with:
-          name: 'obs-win-x86-${{ steps.setup.outputs.commitHash }}'
+          name: 'obs-studio-windows-x86-${{ steps.setup.outputs.commitHash }}'
 
       - name: 'Unpack Windows build artifacts'
         id: unpack
@@ -438,18 +451,18 @@ jobs:
             $null = New-Item -ItemType Directory -Force -Path install_temp
           }
 
-          Expand-Archive -Path "$(Get-ChildItem -filter "OBS-Studio-*-Win-x86.zip" -File)" -DestinationPath install_temp
-          Expand-Archive -Path "$(Get-ChildItem -filter "OBS-Studio-*-Win-x64.zip" -File)" -Force -DestinationPath install_temp
+          Expand-Archive -Path "$(Get-ChildItem -filter "obs-studio-*-windows-x86.zip" -File)" -DestinationPath install_temp
+          Expand-Archive -Path "$(Get-ChildItem -filter "obs-studio-*-windows-x64.zip" -File)" -Force -DestinationPath install_temp
 
           CI/windows/03_package_obs.ps1 -CombinedArchs -Package
 
-          $ArtifactName = (Get-ChildItem -filter "OBS-Studio-*-Win-x86+x64.zip" -File).Name
-          Write-Output "::set-output name=filename::${ArtifactName}"
+          $ArtifactName = (Get-ChildItem -filter "obs-studio-*-windows-x86+x64.zip" -File).Name
+          "filename=${ArtifactName}" >> $env:GITHUB_OUTPUT
 
       - name: 'Upload build artifact'
         uses: actions/upload-artifact@v3
         with:
-          name: 'obs-windows'
+          name: 'obs-studio-windows-installer'
           path: '${{ steps.unpack.outputs.filename }}'
 
   macos_release:
@@ -474,13 +487,13 @@ jobs:
       - name: 'Setup build environment'
         id: setup
         run: |
-          echo "::set-output name=commitHash::$(git rev-parse --short=9 HEAD)"
+          echo "commitHash=$(git rev-parse --short=9 HEAD)" >> $GITHUB_OUTPUT
 
       - name: 'Download artifact'
         if: env.HAVE_CODESIGN_IDENTITY == 'true'
         uses: actions/download-artifact@v3
         with:
-          name: 'obs-macos-${{ matrix.arch }}-${{ steps.setup.outputs.commitHash }}'
+          name: 'obs-studio-macos-${{ matrix.arch }}-${{ steps.setup.outputs.commitHash }}'
 
       - name: 'Install Apple Developer Certificate'
         if: env.HAVE_CODESIGN_IDENTITY == 'true'
@@ -505,5 +518,5 @@ jobs:
         if: env.HAVE_CODESIGN_IDENTITY == 'true'
         uses: actions/upload-artifact@v3
         with:
-          name: 'obs-macos-${{ matrix.arch }}-notarized'
+          name: 'obs-studio-macos-${{ matrix.arch }}-notarized'
           path: '${{ github.workspace }}/${{ env.FILE_NAME }}'

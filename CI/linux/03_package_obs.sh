@@ -21,9 +21,14 @@ package_obs() {
     cmake --build ${BUILD_DIR} -t package
 
     DEB_NAME=$(find ${BUILD_DIR} -maxdepth 1 -type f -name "obs*.deb" | sort -rn | head -1)
+    DEBUG_NAME="${DEB_NAME//.deb/-dbgsym.ddeb}"
 
     if [ "${DEB_NAME}" ]; then
-        mv ${DEB_NAME} ${BUILD_DIR}/${FILE_NAME}
+        mv "${DEB_NAME}" "${BUILD_DIR}/${FILE_NAME}"
+
+        if [ "${DEBUG_NAME}" ]; then
+            mv "${DEBUG_NAME}" "${BUILD_DIR}/${FILE_NAME//.deb/-dbgsym.ddeb}"
+        fi
     else
         error "ERROR No suitable OBS debian package generated"
     fi
@@ -37,20 +42,23 @@ package-obs-standalone() {
     source "${CHECKOUT_DIR}/CI/include/build_support.sh"
     source "${CHECKOUT_DIR}/CI/include/build_support_linux.sh"
 
-    step "Fetch OBS tags..."
-    git fetch origin --tags
+    if [ -z "${CI}" ]; then
+        step "Fetch OBS tags..."
+        git fetch --tags origin
+    fi
 
     GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
     GIT_HASH=$(git rev-parse --short=9 HEAD)
     GIT_TAG=$(git describe --tags --abbrev=0)
+    UBUNTU_VERSION=$(lsb_release -sr)
 
-    if [ "${BUILD_FOR_DISTRIBUTION}" ]; then
+    if [ "${BUILD_FOR_DISTRIBUTION}" = "true" ]; then
         VERSION_STRING="${GIT_TAG}"
     else
         VERSION_STRING="${GIT_TAG}-${GIT_HASH}"
     fi
 
-    FILE_NAME="obs-studio-${VERSION_STRING}-Linux.deb"
+    FILE_NAME="obs-studio-${VERSION_STRING}-ubuntu-${UBUNTU_VERSION}.deb"
     package_obs
 }
 

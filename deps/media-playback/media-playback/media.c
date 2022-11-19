@@ -126,7 +126,8 @@ static inline enum speaker_layout convert_speaker_layout(uint8_t channels)
 }
 
 static inline enum video_colorspace
-convert_color_space(enum AVColorSpace s, enum AVColorTransferCharacteristic trc)
+convert_color_space(enum AVColorSpace s, enum AVColorTransferCharacteristic trc,
+		    enum AVColorPrimaries color_primaries)
 {
 	switch (s) {
 	case AVCOL_SPC_BT709:
@@ -141,7 +142,11 @@ convert_color_space(enum AVColorSpace s, enum AVColorTransferCharacteristic trc)
 		return (trc == AVCOL_TRC_ARIB_STD_B67) ? VIDEO_CS_2100_HLG
 						       : VIDEO_CS_2100_PQ;
 	default:
-		return VIDEO_CS_DEFAULT;
+		return (color_primaries == AVCOL_PRI_BT2020)
+			       ? ((trc == AVCOL_TRC_ARIB_STD_B67)
+					  ? VIDEO_CS_2100_HLG
+					  : VIDEO_CS_2100_PQ)
+			       : VIDEO_CS_DEFAULT;
 	}
 }
 
@@ -348,6 +353,12 @@ static void mp_media_next_audio(mp_media_t *m)
 	struct mp_decode *d = &m->a;
 	struct obs_source_audio audio = {0};
 	AVFrame *f = d->frame;
+	int channels;
+#if LIBAVFORMAT_VERSION_INT < AV_VERSION_INT(59, 19, 100)
+	channels = f->channels;
+#else
+	channels = f->ch_layout.nb_channels;
+#endif
 
 	if (!mp_media_can_play_frame(m, d))
 		return;
@@ -360,7 +371,7 @@ static void mp_media_next_audio(mp_media_t *m)
 		audio.data[i] = f->data[i];
 
 	audio.samples_per_sec = f->sample_rate * m->speed / 100;
-	audio.speakers = convert_speaker_layout(f->channels);
+	audio.speakers = convert_speaker_layout(channels);
 	audio.format = convert_sample_format(f->format);
 	audio.frames = f->nb_samples;
 
@@ -421,7 +432,8 @@ static void mp_media_next_video(mp_media_t *m, bool preload)
 		frame->data[0] -= frame->linesize[0] * ((size_t)f->height - 1);
 
 	new_format = convert_pixel_format(m->scale_format);
-	new_space = convert_color_space(f->colorspace, f->color_trc);
+	new_space = convert_color_space(f->colorspace, f->color_trc,
+					f->color_primaries);
 	new_range = m->force_range == VIDEO_RANGE_DEFAULT
 			    ? convert_color_range(f->color_range)
 			    : m->force_range;
@@ -455,6 +467,7 @@ static void mp_media_next_video(mp_media_t *m, bool preload)
 
 	frame->width = f->width;
 	frame->height = f->height;
+	frame->max_luminance = d->max_luminance;
 	frame->flip = flip;
 	frame->flags |= m->is_linear_alpha ? OBS_SOURCE_FRAME_LINEAR_ALPHA : 0;
 	switch (f->color_trc) {
@@ -557,12 +570,15 @@ static bool mp_media_reset(mp_media_t *m)
 
 	int64_t next_ts = mp_media_get_base_pts(m);
 	int64_t offset = next_ts - m->next_pts_ns;
+	int64_t start_time = m->fmt->start_time;
+	if (start_time == AV_NOPTS_VALUE)
+		start_time = 0;
 
 	m->eof = false;
 	m->base_ts += next_ts;
 	m->seek_next_ts = false;
 
-	seek_to(m, m->fmt->start_time);
+	seek_to(m, start_time);
 
 	pthread_mutex_lock(&m->mutex);
 	stopping = m->stopping;
@@ -679,6 +695,19 @@ static bool init_avformat(mp_media_t *m)
 	bool is_rist = strncmp(m->path, RIST_PROTO, strlen(RIST_PROTO)) == 0;
 	if (m->buffering && !m->is_local_file && !is_rist)
 		av_dict_set_int(&opts, "buffer_size", m->buffering, 0);
+
+	if (m->ffmpeg_options) {
+		int ret = av_dict_parse_string(&opts, m->ffmpeg_options, "=",
+					       " ", 0);
+		if (ret) {
+			blog(LOG_WARNING,
+			     "Failed to parse FFmpeg options: %s\n%s",
+			     av_err2str(ret), m->ffmpeg_options);
+		} else {
+			blog(LOG_INFO, "Set FFmpeg options: %s",
+			     m->ffmpeg_options);
+		}
+	}
 
 	m->fmt = avformat_alloc_context();
 	if (m->buffering == 0) {
@@ -863,6 +892,7 @@ bool mp_media_init(mp_media_t *media, const struct mp_media_info *info)
 	media->v_cb = info->v_cb;
 	media->a_cb = info->a_cb;
 	media->stop_cb = info->stop_cb;
+	media->ffmpeg_options = info->ffmpeg_options;
 	media->v_seek_cb = info->v_seek_cb;
 	media->v_preload_cb = info->v_preload_cb;
 	media->force_range = info->force_range;

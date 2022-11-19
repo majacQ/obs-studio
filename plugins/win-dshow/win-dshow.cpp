@@ -624,7 +624,6 @@ void DShowInput::OnVideoData(const VideoConfig &config, unsigned char *data,
 	obs_source_output_video2(source, &frame);
 
 	UNUSED_PARAMETER(endTime); /* it's the enndd tiimmes! */
-	UNUSED_PARAMETER(size);
 }
 
 void DShowInput::OnEncodedAudioData(enum AVCodecID id, unsigned char *data,
@@ -1308,6 +1307,12 @@ struct FPSFormat {
 };
 
 static const FPSFormat validFPSFormats[] = {
+	{"360", MAKE_DSHOW_FPS(360)},
+	{"240", MAKE_DSHOW_FPS(240)},
+	{"144", MAKE_DSHOW_FPS(144)},
+	{"120", MAKE_DSHOW_FPS(120)},
+	{"119.88 NTSC", MAKE_DSHOW_FRACTIONAL_FPS(120000, 1001)},
+	{"100", MAKE_DSHOW_FPS(100)},
 	{"60", MAKE_DSHOW_FPS(60)},
 	{"59.94 NTSC", MAKE_DSHOW_FRACTIONAL_FPS(60000, 1001)},
 	{"50", MAKE_DSHOW_FPS(50)},
@@ -1832,7 +1837,6 @@ static bool DeviceIntervalChanged(obs_properties_t *props, obs_property_t *p,
 	UpdateVideoFormats(device, format, cx, cy, val, props);
 	UpdateFPS(device, format, val, cx, cy, props);
 
-	UNUSED_PARAMETER(p);
 	return true;
 }
 

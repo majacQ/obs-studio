@@ -673,6 +673,21 @@ static int get_keysym(obs_key_t key)
 	case OBS_KEY_MOUSE5:
 		return MOUSE_5;
 
+	case OBS_KEY_VK_MEDIA_PLAY_PAUSE:
+		return XF86XK_AudioPlay;
+	case OBS_KEY_VK_MEDIA_STOP:
+		return XF86XK_AudioStop;
+	case OBS_KEY_VK_MEDIA_PREV_TRACK:
+		return XF86XK_AudioPrev;
+	case OBS_KEY_VK_MEDIA_NEXT_TRACK:
+		return XF86XK_AudioNext;
+	case OBS_KEY_VK_VOLUME_MUTE:
+		return XF86XK_AudioMute;
+	case OBS_KEY_VK_VOLUME_DOWN:
+		return XF86XK_AudioRaiseVolume;
+	case OBS_KEY_VK_VOLUME_UP:
+		return XF86XK_AudioLowerVolume;
+
 	/* TODO: Implement keys for non-US keyboards */
 	default:;
 	}
@@ -692,6 +707,15 @@ static obs_key_t key_from_base_keysym(obs_hotkeys_platform_t *context,
 		if (context->base_keysyms[i] == (xcb_keysym_t)code) {
 			return (obs_key_t)i;
 		}
+	}
+
+	switch (code) {
+	case XK_Shift_R:
+		return OBS_KEY_SHIFT;
+	case XK_Control_R:
+		return OBS_KEY_CONTROL;
+	case XK_Alt_R:
+		return OBS_KEY_ALT;
 	}
 
 	return OBS_KEY_NONE;

@@ -261,7 +261,7 @@ static void log_kernel_version(void)
 	blog(LOG_INFO, "Kernel Version: %s %s", info.sysname, info.release);
 }
 
-#if defined(__linux__)
+#if defined(__linux__) || defined(__FreeBSD__)
 static void log_distribution_info(void)
 {
 	FILE *fp;
@@ -322,12 +322,11 @@ void log_system_info(void)
 	log_processor_cores();
 	log_memory_info();
 	log_kernel_version();
-#if defined(__linux__)
+#if defined(__linux__) || defined(__FreeBSD__)
 	log_distribution_info();
 	log_desktop_session_info();
 #endif
 	switch (obs_get_nix_platform()) {
-	case OBS_NIX_PLATFORM_X11_GLX:
 	case OBS_NIX_PLATFORM_X11_EGL:
 		obs_nix_x11_log_info();
 		break;
@@ -341,7 +340,6 @@ void log_system_info(void)
 bool obs_hotkeys_platform_init(struct obs_core_hotkeys *hotkeys)
 {
 	switch (obs_get_nix_platform()) {
-	case OBS_NIX_PLATFORM_X11_GLX:
 	case OBS_NIX_PLATFORM_X11_EGL:
 		hotkeys_vtable = obs_nix_x11_get_hotkeys_vtable();
 		break;

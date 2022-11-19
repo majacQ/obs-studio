@@ -821,7 +821,6 @@ struct gs_swap_chain : gs_obj {
 	gs_init_data initData;
 	DXGI_SWAP_CHAIN_DESC swapDesc = {};
 	gs_color_space space;
-	UINT presentFlags = 0;
 
 	gs_texture_2d target;
 	gs_zstencil_buffer zs;
@@ -980,6 +979,16 @@ struct mat4float {
 	float mat[16];
 };
 
+struct gs_monitor_color_info {
+	bool hdr;
+	UINT bits_per_color;
+
+	gs_monitor_color_info(bool hdr, int bits_per_color)
+		: hdr(hdr), bits_per_color(bits_per_color)
+	{
+	}
+};
+
 struct gs_device {
 	ComPtr<IDXGIFactory1> factory;
 	ComPtr<IDXGIAdapter1> adapter;
@@ -1036,7 +1045,7 @@ struct gs_device {
 	vector<gs_device_loss> loss_callbacks;
 	gs_obj *first_obj = nullptr;
 
-	vector<std::pair<HMONITOR, bool>> monitor_to_hdr;
+	vector<std::pair<HMONITOR, gs_monitor_color_info>> monitor_to_hdr;
 
 	void InitCompiler();
 	void InitFactory();

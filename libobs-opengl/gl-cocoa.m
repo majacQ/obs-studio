@@ -16,6 +16,7 @@
 ******************************************************************************/
 
 #include "gl-subsystem.h"
+#define GL_SILENCE_DEPRECATION
 #include <OpenGL/OpenGL.h>
 
 #import <Cocoa/Cocoa.h>
@@ -197,7 +198,8 @@ struct gl_windowinfo *gl_windowinfo_create(const struct gs_init_data *info)
 	struct gl_windowinfo *wi = bzalloc(sizeof(struct gl_windowinfo));
 
 	wi->view = info->window.view;
-	[info->window.view setWantsBestResolutionOpenGLSurface:YES];
+	wi->view.window.colorSpace = NSColorSpace.sRGBColorSpace;
+	wi->view.wantsBestResolutionOpenGLSurface = YES;
 
 	return wi;
 }
@@ -287,6 +289,12 @@ void device_load_swapchain(gs_device_t *device, gs_swapchain_t *swap)
 	}
 }
 
+bool device_is_present_ready(gs_device_t *device)
+{
+	UNUSED_PARAMETER(device);
+	return true;
+}
+
 void device_present(gs_device_t *device)
 {
 	glFlush();
@@ -334,19 +342,24 @@ gs_texture_t *device_texture_create_from_iosurface(gs_device_t *device,
 	struct gs_texture_2d *tex = bzalloc(sizeof(struct gs_texture_2d));
 
 	OSType pf = IOSurfaceGetPixelFormat(ref);
-	if (pf != 'BGRA')
+	const bool l10r = pf == 'l10r';
+	if (pf == 0)
+		blog(LOG_ERROR, "Invalid IOSurface Buffer");
+	else if ((pf != 'BGRA') && !l10r)
 		blog(LOG_ERROR, "Unexpected pixel format: %d (%c%c%c%c)", pf,
 		     pf >> 24, pf >> 16, pf >> 8, pf);
 
-	const enum gs_color_format color_format = GS_BGRA;
+	const enum gs_color_format color_format = l10r ? GS_R10G10B10A2
+						       : GS_BGRA;
 
 	tex->base.device = device;
 	tex->base.type = GS_TEXTURE_2D;
-	tex->base.format = GS_BGRA;
+	tex->base.format = color_format;
 	tex->base.levels = 1;
-	tex->base.gl_format = convert_gs_format(color_format);
+	tex->base.gl_format = l10r ? GL_BGRA : convert_gs_format(color_format);
 	tex->base.gl_internal_format = convert_gs_internal_format(color_format);
-	tex->base.gl_type = GL_UNSIGNED_INT_8_8_8_8_REV;
+	tex->base.gl_type = l10r ? GL_UNSIGNED_INT_2_10_10_10_REV
+				 : GL_UNSIGNED_INT_8_8_8_8_REV;
 	tex->base.gl_target = GL_TEXTURE_RECTANGLE_ARB;
 	tex->base.is_dynamic = false;
 	tex->base.is_render_target = false;
@@ -415,13 +428,15 @@ bool gs_texture_rebind_iosurface(gs_texture_t *texture, void *iosurf)
 	IOSurfaceRef ref = (IOSurfaceRef)iosurf;
 
 	OSType pf = IOSurfaceGetPixelFormat(ref);
-	if (pf != 'BGRA')
+	if (pf == 0) {
+		blog(LOG_ERROR, "Invalid IOSurface buffer");
+	} else if ((pf != 'BGRA') && (pf != 'l10r')) {
 		blog(LOG_ERROR, "Unexpected pixel format: %d (%c%c%c%c)", pf,
 		     pf >> 24, pf >> 16, pf >> 8, pf);
+	}
 
-	if (tex->width != IOSurfaceGetWidth(ref) ||
-	    tex->height != IOSurfaceGetHeight(ref))
-		return false;
+	tex->width = IOSurfaceGetWidth(ref);
+	tex->height = IOSurfaceGetHeight(ref);
 
 	if (!gl_bind_texture(tex->base.gl_target, tex->base.texture))
 		return false;

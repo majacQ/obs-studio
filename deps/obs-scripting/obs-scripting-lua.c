@@ -644,6 +644,17 @@ static int scene_enum_items(lua_State *script)
 	return 1;
 }
 
+static int sceneitem_group_enum_items(lua_State *script)
+{
+	obs_sceneitem_t *sceneitem;
+	if (!ls_get_libobs_obj(obs_sceneitem_t, 1, &sceneitem))
+		return 0;
+
+	lua_newtable(script);
+	obs_sceneitem_group_enum_items(sceneitem, enum_items_proc, script);
+	return 1;
+}
+
 /* -------------------------------------------- */
 
 static void defer_hotkey_unregister(void *p_cb)
@@ -1014,6 +1025,7 @@ static void add_hook_functions(lua_State *script)
 	add_func("obs_enum_sources", enum_sources);
 	add_func("obs_source_enum_filters", source_enum_filters);
 	add_func("obs_scene_enum_items", scene_enum_items);
+	add_func("obs_sceneitem_group_enum_items", sceneitem_group_enum_items);
 	add_func("source_list_release", source_list_release);
 	add_func("sceneitem_list_release", sceneitem_list_release);
 	add_func("calldata_source", calldata_source);
@@ -1107,8 +1119,11 @@ bool obs_lua_script_load(obs_script_t *s)
 	struct obs_lua_script *data = (struct obs_lua_script *)s;
 	if (!data->base.loaded) {
 		data->base.loaded = load_lua_script(data);
-		if (data->base.loaded)
+		if (data->base.loaded) {
+			blog(LOG_INFO, "[obs-scripting]: Loaded lua script: %s",
+			     data->base.file.array);
 			obs_lua_script_update(s, NULL);
+		}
 	}
 
 	return data->base.loaded;
@@ -1225,6 +1240,9 @@ void obs_lua_script_unload(obs_script_t *s)
 
 	lua_close(script);
 	s->loaded = false;
+
+	blog(LOG_INFO, "[obs-scripting]: Unloaded lua script: %s",
+	     data->base.file.array);
 }
 
 void obs_lua_script_destroy(obs_script_t *s)

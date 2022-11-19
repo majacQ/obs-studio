@@ -49,6 +49,7 @@ struct ffmpeg_source {
 
 	char *input;
 	char *input_format;
+	char *ffmpeg_options;
 	int buffering_mb;
 	int speed_percent;
 	bool is_looping;
@@ -117,9 +118,9 @@ static void ffmpeg_source_defaults(obs_data_t *settings)
 }
 
 static const char *media_filter =
-	" (*.mp4 *.ts *.mov *.mxf *.flv *.mkv *.avi *.mp3 *.ogg *.aac *.wav *.gif *.webm);;";
+	" (*.mp4 *.m4v *.ts *.mov *.mxf *.flv *.mkv *.avi *.mp3 *.ogg *.aac *.wav *.gif *.webm);;";
 static const char *video_filter =
-	" (*.mp4 *.ts *.mov *.mxf *.flv *.mkv *.avi *.gif *.webm);;";
+	" (*.mp4 *.m4v *.ts *.mov *.mxf *.flv *.mkv *.avi *.gif *.webm);;";
 static const char *audio_filter = " (*.mp3 *.aac *.ogg *.wav);;";
 
 static obs_properties_t *ffmpeg_source_getproperties(void *data)
@@ -127,7 +128,6 @@ static obs_properties_t *ffmpeg_source_getproperties(void *data)
 	struct ffmpeg_source *s = data;
 	struct dstr filter = {0};
 	struct dstr path = {0};
-	UNUSED_PARAMETER(data);
 
 	obs_properties_t *props = obs_properties_create();
 
@@ -221,6 +221,12 @@ static obs_properties_t *ffmpeg_source_getproperties(void *data)
 
 	obs_properties_add_bool(props, "seekable", obs_module_text("Seekable"));
 
+	prop = obs_properties_add_text(props, "ffmpeg_options",
+				       obs_module_text("FFmpegOpts"),
+				       OBS_TEXT_DEFAULT);
+	obs_property_set_long_description(
+		prop, obs_module_text("FFmpegOpts.ToolTip.Source"));
+
 	return props;
 }
 
@@ -237,14 +243,15 @@ static void dump_source_info(struct ffmpeg_source *s, const char *input,
 		"\tis_hw_decoding:          %s\n"
 		"\tis_clear_on_media_end:   %s\n"
 		"\trestart_on_activate:     %s\n"
-		"\tclose_when_inactive:     %s",
+		"\tclose_when_inactive:     %s\n"
+		"\tffmpeg_options:          %s",
 		input ? input : "(null)",
 		input_format ? input_format : "(null)", s->speed_percent,
 		s->is_looping ? "yes" : "no", s->is_linear_alpha ? "yes" : "no",
 		s->is_hw_decoding ? "yes" : "no",
 		s->is_clear_on_media_end ? "yes" : "no",
 		s->restart_on_activate ? "yes" : "no",
-		s->close_when_inactive ? "yes" : "no");
+		s->close_when_inactive ? "yes" : "no", s->ffmpeg_options);
 }
 
 static void get_frame(void *opaque, struct obs_source_frame *f)
@@ -312,6 +319,7 @@ static void ffmpeg_source_open(struct ffmpeg_source *s)
 			.force_range = s->range,
 			.is_linear_alpha = s->is_linear_alpha,
 			.hardware_decoding = s->is_hw_decoding,
+			.ffmpeg_options = s->ffmpeg_options,
 			.is_local_file = s->is_local_file || s->seekable,
 			.reconnecting = s->reconnecting,
 		};
@@ -329,7 +337,8 @@ static void ffmpeg_source_start(struct ffmpeg_source *s)
 		return;
 
 	mp_media_play(&s->media, s->is_looping, s->reconnecting);
-	if (s->is_local_file && (s->is_clear_on_media_end || s->is_looping))
+	if (s->is_local_file && s->media.has_video &&
+	    (s->is_clear_on_media_end || s->is_looping))
 		obs_source_show_preloaded_video(s->source);
 	else
 		obs_source_output_video(s->source, NULL);
@@ -403,9 +412,11 @@ static void ffmpeg_source_update(void *data, obs_data_t *settings)
 
 	const char *input;
 	const char *input_format;
+	const char *ffmpeg_options;
 
 	bfree(s->input);
 	bfree(s->input_format);
+	bfree(s->ffmpeg_options);
 
 	if (is_local_file) {
 		input = obs_data_get_string(settings, "local_file");
@@ -432,6 +443,8 @@ static void ffmpeg_source_update(void *data, obs_data_t *settings)
 		}
 	}
 
+	ffmpeg_options = obs_data_get_string(settings, "ffmpeg_options");
+
 	s->close_when_inactive =
 		obs_data_get_bool(settings, "close_when_inactive");
 
@@ -451,6 +464,7 @@ static void ffmpeg_source_update(void *data, obs_data_t *settings)
 	s->speed_percent = (int)obs_data_get_int(settings, "speed_percent");
 	s->is_local_file = is_local_file;
 	s->seekable = obs_data_get_bool(settings, "seekable");
+	s->ffmpeg_options = ffmpeg_options ? bstrdup(ffmpeg_options) : NULL;
 
 	if (s->speed_percent < 1 || s->speed_percent > 200)
 		s->speed_percent = 100;
@@ -597,8 +611,6 @@ static void ffmpeg_source_stop_hotkey(void *data, obs_hotkey_id id,
 
 static void *ffmpeg_source_create(obs_data_t *settings, obs_source_t *source)
 {
-	UNUSED_PARAMETER(settings);
-
 	struct ffmpeg_source *s = bzalloc(sizeof(struct ffmpeg_source));
 	s->source = source;
 
@@ -646,6 +658,7 @@ static void ffmpeg_source_destroy(void *data)
 	bfree(s->sws_data);
 	bfree(s->input);
 	bfree(s->input_format);
+	bfree(s->ffmpeg_options);
 	bfree(s);
 }
 

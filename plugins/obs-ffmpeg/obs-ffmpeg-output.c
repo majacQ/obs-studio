@@ -28,30 +28,6 @@
 #include <libavutil/channel_layout.h>
 #include <libavutil/mastering_display_metadata.h>
 
-struct ffmpeg_output {
-	obs_output_t *output;
-	volatile bool active;
-	struct ffmpeg_data ff_data;
-
-	bool connecting;
-	pthread_t start_thread;
-
-	uint64_t total_bytes;
-
-	uint64_t audio_start_ts;
-	uint64_t video_start_ts;
-	uint64_t stop_ts;
-	volatile bool stopping;
-
-	bool write_thread_active;
-	pthread_mutex_t write_mutex;
-	pthread_t write_thread;
-	os_sem_t *write_sem;
-	os_event_t *stop_event;
-
-	DARRAY(AVPacket *) packets;
-};
-
 /* ------------------------------------------------------------------------- */
 
 static void ffmpeg_output_set_last_error(struct ffmpeg_data *data,
@@ -79,7 +55,8 @@ void ffmpeg_log_error(int log_level, struct ffmpeg_data *data,
 }
 
 static bool new_stream(struct ffmpeg_data *data, AVStream **stream,
-		       AVCodec **codec, enum AVCodecID id, const char *name)
+		       const AVCodec **codec, enum AVCodecID id,
+		       const char *name)
 {
 	*codec = (!!name && *name) ? avcodec_find_encoder_by_name(name)
 				   : avcodec_find_encoder(id);
@@ -175,6 +152,10 @@ static bool open_video_codec(struct ffmpeg_data *data)
 	data->vframe->color_primaries = data->config.color_primaries;
 	data->vframe->color_trc = data->config.color_trc;
 	data->vframe->colorspace = data->config.colorspace;
+	data->vframe->chroma_location =
+		(data->config.colorspace == AVCOL_SPC_BT2020_NCL)
+			? AVCHROMA_LOC_TOPLEFT
+			: AVCHROMA_LOC_LEFT;
 
 	ret = av_frame_get_buffer(data->vframe, base_get_alignment());
 	if (ret < 0) {
@@ -223,10 +204,13 @@ static bool create_video_stream(struct ffmpeg_data *data)
 			data->config.video_encoder))
 		return false;
 
-	if ((data->config.color_trc == AVCOL_TRC_SMPTE2084) ||
-	    (data->config.color_trc == AVCOL_TRC_ARIB_STD_B67)) {
+	const enum AVColorTransferCharacteristic trc = data->config.color_trc;
+	const bool pq = trc == AVCOL_TRC_SMPTE2084;
+	const bool hlg = trc == AVCOL_TRC_ARIB_STD_B67;
+	if (pq || hlg) {
 		const int hdr_nominal_peak_level =
-			(int)obs_get_video_hdr_nominal_peak_level();
+			pq ? (int)obs_get_video_hdr_nominal_peak_level()
+			   : (hlg ? 1000 : 0);
 
 		size_t content_size;
 		AVContentLightMetadata *const content =
@@ -278,6 +262,10 @@ static bool create_video_stream(struct ffmpeg_data *data)
 	context->color_primaries = data->config.color_primaries;
 	context->color_trc = data->config.color_trc;
 	context->colorspace = data->config.colorspace;
+	context->chroma_sample_location =
+		(data->config.colorspace == AVCOL_SPC_BT2020_NCL)
+			? AVCHROMA_LOC_TOPLEFT
+			: AVCHROMA_LOC_LEFT;
 	context->thread_count = 0;
 
 	data->video->time_base = context->time_base;
@@ -306,6 +294,7 @@ static bool open_audio_codec(struct ffmpeg_data *data, int idx)
 	AVCodecContext *const context = data->audio_infos[idx].ctx;
 	char **opts = strlist_split(data->config.audio_settings, ' ', false);
 	int ret;
+	int channels;
 
 	if (opts) {
 		parse_params(context, opts);
@@ -320,10 +309,15 @@ static bool open_audio_codec(struct ffmpeg_data *data, int idx)
 	}
 
 	data->aframe[idx]->format = context->sample_fmt;
+#if LIBAVUTIL_VERSION_INT < AV_VERSION_INT(57, 24, 100)
 	data->aframe[idx]->channels = context->channels;
 	data->aframe[idx]->channel_layout = context->channel_layout;
+	channels = context->channels;
+#else
+	data->aframe[idx]->ch_layout = context->ch_layout;
+	channels = context->ch_layout.nb_channels;
+#endif
 	data->aframe[idx]->sample_rate = context->sample_rate;
-
 	context->strict_std_compliance = -2;
 
 	ret = avcodec_open2(context, data->acodec, NULL);
@@ -336,7 +330,7 @@ static bool open_audio_codec(struct ffmpeg_data *data, int idx)
 
 	data->frame_size = context->frame_size ? context->frame_size : 1024;
 
-	ret = av_samples_alloc(data->samples[idx], NULL, context->channels,
+	ret = av_samples_alloc(data->samples[idx], NULL, channels,
 			       data->frame_size, context->sample_fmt, 0);
 	if (ret < 0) {
 		ffmpeg_log_error(LOG_WARNING, data,
@@ -358,6 +352,7 @@ static bool create_audio_stream(struct ffmpeg_data *data, int idx)
 	AVCodecContext *context;
 	AVStream *stream;
 	struct obs_audio_info aoi;
+	int channels;
 
 	if (!obs_get_audio_info(&aoi)) {
 		ffmpeg_log_error(LOG_WARNING, data, "No active audio");
@@ -376,15 +371,23 @@ static bool create_audio_stream(struct ffmpeg_data *data, int idx)
 #endif
 	context->bit_rate = (int64_t)data->config.audio_bitrate * 1000;
 	context->time_base = (AVRational){1, aoi.samples_per_sec};
+#if LIBAVUTIL_VERSION_INT < AV_VERSION_INT(57, 24, 100)
 	context->channels = get_audio_channels(aoi.speakers);
+#endif
+	channels = get_audio_channels(aoi.speakers);
+
 	context->sample_rate = aoi.samples_per_sec;
-	context->channel_layout =
-		av_get_default_channel_layout(context->channels);
+#if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(59, 24, 100)
+	context->channel_layout = av_get_default_channel_layout(channels);
 
 	//avutil default channel layout for 5 channels is 5.0 ; fix for 4.1
 	if (aoi.speakers == SPEAKERS_4POINT1)
 		context->channel_layout = av_get_channel_layout("4.1");
-
+#else
+	av_channel_layout_default(&context->ch_layout, channels);
+	if (aoi.speakers == SPEAKERS_4POINT1)
+		context->ch_layout = (AVChannelLayout)AV_CHANNEL_LAYOUT_4POINT1;
+#endif
 	context->sample_fmt = data->acodec->sample_fmts
 				      ? data->acodec->sample_fmts[0]
 				      : AV_SAMPLE_FMT_FLTP;
@@ -407,7 +410,7 @@ static bool create_audio_stream(struct ffmpeg_data *data, int idx)
 
 static inline bool init_streams(struct ffmpeg_data *data)
 {
-	AVOutputFormat *format = data->output->oformat;
+	const AVOutputFormat *format = data->output->oformat;
 
 	if (format->video_codec != AV_CODEC_ID_NONE)
 		if (!create_video_stream(data))
@@ -428,7 +431,7 @@ static inline bool init_streams(struct ffmpeg_data *data)
 
 static inline bool open_output_file(struct ffmpeg_data *data)
 {
-	AVOutputFormat *format = data->output->oformat;
+	const AVOutputFormat *format = data->output->oformat;
 	int ret;
 
 	AVDictionary *dict = NULL;
@@ -555,7 +558,7 @@ static inline const char *safe_str(const char *s)
 
 static enum AVCodecID get_codec_id(const char *name, int id)
 {
-	AVCodec *codec;
+	const AVCodec *codec;
 
 	if (id != 0)
 		return (enum AVCodecID)id;
@@ -869,14 +872,20 @@ static void encode_audio(struct ffmpeg_output *output, int idx,
 
 	AVPacket *packet = NULL;
 	int ret, got_packet;
-	size_t total_size = data->frame_size * block_size * context->channels;
+	int channels;
+#if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(57, 24, 100)
+	channels = context->ch_layout.nb_channels;
+#else
+	channels = context->channels;
+#endif
+	size_t total_size = data->frame_size * block_size * channels;
 
 	data->aframe[idx]->nb_samples = data->frame_size;
 	data->aframe[idx]->pts = av_rescale_q(
 		data->total_samples[idx], (AVRational){1, context->sample_rate},
 		context->time_base);
 
-	ret = avcodec_fill_audio_frame(data->aframe[idx], context->channels,
+	ret = avcodec_fill_audio_frame(data->aframe[idx], channels,
 				       context->sample_fmt,
 				       data->samples[idx][0], (int)total_size,
 				       1);
@@ -1015,19 +1024,17 @@ static uint64_t get_packet_sys_dts(struct ffmpeg_output *output,
 
 static int process_packet(struct ffmpeg_output *output)
 {
-	AVPacket *packet;
-	bool new_packet = false;
-	int ret;
+	AVPacket *packet = NULL;
+	int ret = 0;
 
 	pthread_mutex_lock(&output->write_mutex);
 	if (output->packets.num) {
 		packet = output->packets.array[0];
 		da_erase(output->packets, 0);
-		new_packet = true;
 	}
 	pthread_mutex_unlock(&output->write_mutex);
 
-	if (!new_packet)
+	if (!packet)
 		return 0;
 
 	/*blog(LOG_DEBUG, "size = %d, flags = %lX, stream = %d, "
@@ -1037,22 +1044,24 @@ static int process_packet(struct ffmpeg_output *output)
 
 	if (stopping(output)) {
 		uint64_t sys_ts = get_packet_sys_dts(output, packet);
-		if (sys_ts >= output->stop_ts)
-			return 0;
+		if (sys_ts >= output->stop_ts) {
+			ret = 0;
+			goto end;
+		}
 	}
 
 	output->total_bytes += packet->size;
 
 	ret = av_interleaved_write_frame(output->ff_data.output, packet);
 	if (ret < 0) {
-		av_packet_free(&packet);
 		ffmpeg_log_error(LOG_WARNING, &output->ff_data,
 				 "process_packet: Error writing packet: %s",
 				 av_err2str(ret));
-		return ret;
 	}
 
-	return 0;
+end:
+	av_packet_free(&packet);
+	return ret;
 }
 
 static void *write_thread(void *data)

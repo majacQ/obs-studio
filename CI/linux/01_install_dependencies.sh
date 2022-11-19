@@ -32,12 +32,23 @@ install_obs-deps() {
     fi
 }
 
-install_qt-deps() {
+install_qt5-deps() {
     shift
-    status "Install Qt dependencies"
-    trap "caught_error 'install_qt-deps'" ERR
+    status "Install Qt5 dependencies"
+    trap "caught_error 'install_qt5-deps'" ERR
 
     sudo apt-get install -y $@
+}
+
+install_qt6-deps() {
+    shift
+    status "Install Qt6 dependencies"
+    trap "caught_error 'install_qt6-deps'" ERR
+
+    _QT6_AVAILABLE="$(sudo apt-cache madison ${1})"
+    if [ "${_QT6_AVAILABLE}" ]; then
+        sudo apt-get install -y $@
+    fi
 }
 
 install_cef() {
@@ -78,15 +89,15 @@ install_dependencies() {
         "obs-deps libavcodec-dev libavdevice-dev libavfilter-dev libavformat-dev libavutil-dev libswresample-dev \
          libswscale-dev libx264-dev libcurl4-openssl-dev libmbedtls-dev libgl1-mesa-dev libjansson-dev \
          libluajit-5.1-dev python3-dev libx11-dev libxcb-randr0-dev libxcb-shm0-dev libxcb-xinerama0-dev \
-         libxcomposite-dev libxinerama-dev libxcb1-dev libx11-xcb-dev libxcb-xfixes0-dev swig libcmocka-dev \
+         libxcb-composite0-dev libxinerama-dev libxcb1-dev libx11-xcb-dev libxcb-xfixes0-dev swig libcmocka-dev \
          libpci-dev libxss-dev libglvnd-dev libgles2-mesa libgles2-mesa-dev libwayland-dev libxkbcommon-dev"
-        "qt-deps qtbase5-dev qtbase5-private-dev libqt5svg5-dev qtwayland5"
+        "qt5-deps qtbase5-dev qtbase5-private-dev libqt5svg5-dev qtwayland5"
+        "qt6-deps qt6-base-dev qt6-base-private-dev libqt6svg6-dev qt6-wayland"
         "cef ${LINUX_CEF_BUILD_VERSION:-${CI_LINUX_CEF_VERSION}}"
         "plugin-deps libasound2-dev libfdk-aac-dev libfontconfig-dev libfreetype6-dev libjack-jackd2-dev \
          libpulse-dev libsndio-dev libspeexdsp-dev libudev-dev libv4l-dev libva-dev libvlc-dev libdrm-dev"
     )
 
-    sudo dpkg --add-architecture amd64
     sudo apt-get -qq update
 
     for DEPENDENCY in "${BUILD_DEPS[@]}"; do

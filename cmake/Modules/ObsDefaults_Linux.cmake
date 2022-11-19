@@ -49,7 +49,7 @@ macro(setup_obs_project)
 				└ libobs
 				└ obs-plugins
 				└ obs-studio
-	]]
+	#]]
 
   if(CMAKE_SIZEOF_VOID_P EQUAL 8)
     set(_ARCH_SUFFIX 64)
@@ -93,8 +93,8 @@ macro(setup_obs_project)
     set(OBS_DATA_PATH "../../${OBS_DATA_DESTINATION}")
 
     set(OBS_SCRIPT_PLUGIN_PATH "../../${OBS_SCRIPT_PLUGIN_DESTINATION}")
-    set(CMAKE_INSTALL_RPATH
-        "$ORIGIN/" "${CMAKE_INSTALL_PREFIX}/${OBS_LIBRARY_DESTINATION}")
+    set(CMAKE_INSTALL_RPATH "$ORIGIN/"
+                            "$ORIGIN/../../${OBS_LIBRARY_DESTINATION}")
   endif()
 
   if(BUILD_FOR_PPA)
@@ -114,14 +114,13 @@ macro(setup_obs_project)
   set(CPACK_RESOURCE_FILE_LICENSE
       "${CMAKE_SOURCE_DIR}/UI/data/license/gplv2.txt")
   set(CPACK_PACKAGE_VERSION "${OBS_VERSION_CANONICAL}-${OBS_BUILD_NUMBER}")
-  set(CPACK_STRIP_FILES "bin/obs" "bin/obs-ffmpeg-mux")
-  set(CPACK_SOURCE_STRIP_FILES "")
   set(CPACK_PACKAGE_EXECUTABLES "obs")
 
   if(OS_LINUX AND NOT LINUX_PORTABLE)
     set(CPACK_GENERATOR "DEB")
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
     set(CPACK_SET_DESTDIR ON)
+    set(CPACK_DEBIAN_DEBUGINFO_PACKAGE ON)
   elseif(OS_FREEBSD)
     option(ENABLE_CPACK_GENERATOR
            "Enable FreeBSD CPack generator (experimental)" OFF)

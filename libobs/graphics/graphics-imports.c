@@ -96,6 +96,7 @@ bool load_graphics_imports(struct gs_exports *exports, void *module,
 	GRAPHICS_IMPORT(device_load_swapchain);
 	GRAPHICS_IMPORT(device_end_scene);
 	GRAPHICS_IMPORT(device_clear);
+	GRAPHICS_IMPORT(device_is_present_ready);
 	GRAPHICS_IMPORT(device_present);
 	GRAPHICS_IMPORT(device_flush);
 	GRAPHICS_IMPORT(device_set_cull_mode);
@@ -237,6 +238,7 @@ bool load_graphics_imports(struct gs_exports *exports, void *module,
 	GRAPHICS_IMPORT(device_texture_create_from_dmabuf);
 	GRAPHICS_IMPORT(device_query_dmabuf_capabilities);
 	GRAPHICS_IMPORT(device_query_dmabuf_modifiers_for_format);
+	GRAPHICS_IMPORT(device_texture_create_from_pixmap);
 #endif
 
 	return success;

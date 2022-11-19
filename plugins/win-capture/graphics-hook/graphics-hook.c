@@ -3,7 +3,7 @@
 #include <inttypes.h>
 #include "graphics-hook.h"
 #include "../graphics-hook-ver.h"
-#include "../obfuscate.h"
+#include "../../libobs/util/windows/obfuscate.h"
 
 #define DEBUG_OUTPUT
 
@@ -65,7 +65,8 @@ static inline void wait_for_dll_main_finish(HANDLE thread_handle)
 bool init_pipe(void)
 {
 	char new_name[64];
-	sprintf(new_name, "%s%lu", PIPE_NAME, GetCurrentProcessId());
+	snprintf(new_name, sizeof(new_name), "%s%lu", PIPE_NAME,
+		 GetCurrentProcessId());
 
 	const bool success = ipc_pipe_client_open(&pipe, new_name);
 	if (!success) {
@@ -931,7 +932,7 @@ __declspec(dllexport) LRESULT CALLBACK
 		HMODULE user32 = GetModuleHandleW(L"USER32");
 		BOOL(WINAPI * unhook_windows_hook_ex)(HHOOK) = NULL;
 
-		unhook_windows_hook_ex = get_obfuscated_func(
+		unhook_windows_hook_ex = ms_get_obfuscated_func(
 			user32, "VojeleY`bdgxvM`hhDz", 0x7F55F80C9EE3A213ULL);
 
 		if (unhook_windows_hook_ex)

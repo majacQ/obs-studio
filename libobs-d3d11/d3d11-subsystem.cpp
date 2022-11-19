@@ -66,7 +66,8 @@ gs_obj::~gs_obj()
 		next->prev_next = prev_next;
 }
 
-static bool screen_supports_hdr(gs_device_t *device, HMONITOR hMonitor)
+static gs_monitor_color_info get_monitor_color_info(gs_device_t *device,
+						    HMONITOR hMonitor)
 {
 	IDXGIFactory1 *factory1 = device->factory;
 	if (!factory1->IsCurrent()) {
@@ -75,7 +76,8 @@ static bool screen_supports_hdr(gs_device_t *device, HMONITOR hMonitor)
 		device->monitor_to_hdr.clear();
 	}
 
-	for (const std::pair<HMONITOR, bool> &pair : device->monitor_to_hdr) {
+	for (const std::pair<HMONITOR, gs_monitor_color_info> &pair :
+	     device->monitor_to_hdr) {
 		if (pair.first == hMonitor)
 			return pair.second;
 	}
@@ -96,25 +98,36 @@ static bool screen_supports_hdr(gs_device_t *device, HMONITOR hMonitor)
 					const bool hdr =
 						desc1.ColorSpace ==
 						DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
-					device->monitor_to_hdr.emplace_back(
-						hMonitor, hdr);
-					return hdr;
+					return device->monitor_to_hdr
+						.emplace_back(
+							hMonitor,
+							gs_monitor_color_info(
+								hdr,
+								desc1.BitsPerColor))
+						.second;
 				}
 			}
 		}
 	}
 
-	return false;
+	return gs_monitor_color_info(false, 8);
 }
 
-static enum gs_color_space get_next_space(gs_device_t *device, HWND hwnd)
+static enum gs_color_space get_next_space(gs_device_t *device, HWND hwnd,
+					  DXGI_SWAP_EFFECT effect)
 {
 	enum gs_color_space next_space = GS_CS_SRGB;
-	const HMONITOR hMonitor =
-		MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-	if (hMonitor) {
-		if (screen_supports_hdr(device, hMonitor))
-			next_space = GS_CS_709_SCRGB;
+	if (effect == DXGI_SWAP_EFFECT_FLIP_DISCARD) {
+		const HMONITOR hMonitor =
+			MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+		if (hMonitor) {
+			const gs_monitor_color_info info =
+				get_monitor_color_info(device, hMonitor);
+			if (info.hdr)
+				next_space = GS_CS_709_SCRGB;
+			else if (info.bits_per_color > 8)
+				next_space = GS_CS_SRGB_16F;
+		}
 	}
 
 	return next_space;
@@ -123,7 +136,14 @@ static enum gs_color_space get_next_space(gs_device_t *device, HWND hwnd)
 static enum gs_color_format
 get_swap_format_from_space(gs_color_space space, gs_color_format sdr_format)
 {
-	return (space == GS_CS_709_SCRGB) ? GS_RGBA16F : sdr_format;
+	gs_color_format format = sdr_format;
+	switch (space) {
+	case GS_CS_SRGB_16F:
+	case GS_CS_709_SCRGB:
+		format = GS_RGBA16F;
+	}
+
+	return format;
 }
 
 static inline enum gs_color_space
@@ -131,7 +151,7 @@ make_swap_desc(gs_device *device, DXGI_SWAP_CHAIN_DESC &desc,
 	       const gs_init_data *data, DXGI_SWAP_EFFECT effect, UINT flags)
 {
 	const HWND hwnd = (HWND)data->window.hwnd;
-	const enum gs_color_space space = get_next_space(device, hwnd);
+	const enum gs_color_space space = get_next_space(device, hwnd, effect);
 	const gs_color_format format =
 		get_swap_format_from_space(space, data->format);
 
@@ -243,7 +263,8 @@ void gs_swap_chain::Resize(uint32_t cx, uint32_t cy, gs_color_format format)
 void gs_swap_chain::Init()
 {
 	const gs_color_format format = get_swap_format_from_space(
-		get_next_space(device, hwnd), initData.format);
+		get_next_space(device, hwnd, swapDesc.SwapEffect),
+		initData.format);
 
 	target.device = device;
 	target.isRenderTarget = true;
@@ -274,16 +295,6 @@ gs_swap_chain::gs_swap_chain(gs_device *device, const gs_init_data *data)
 
 		effect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
 		flags |= DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
-
-		BOOL featureSupportData = FALSE;
-		const HRESULT hr = factory5->CheckFeatureSupport(
-			DXGI_FEATURE_PRESENT_ALLOW_TEARING, &featureSupportData,
-			sizeof(featureSupportData));
-		if (SUCCEEDED(hr) && featureSupportData) {
-			presentFlags |= DXGI_PRESENT_ALLOW_TEARING;
-
-			flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
-		}
 	}
 
 	space = make_swap_desc(device, swapDesc, &initData, effect, flags);
@@ -298,11 +309,9 @@ gs_swap_chain::gs_swap_chain(gs_device *device, const gs_init_data *data)
 	if (flags & DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT) {
 		ComPtr<IDXGISwapChain2> swap2 = ComQIPtr<IDXGISwapChain2>(swap);
 		hWaitable = swap2->GetFrameLatencyWaitableObject();
-		if (hWaitable) {
-			hr = swap2->SetMaximumFrameLatency(40);
-			if (FAILED(hr))
-				throw HRError("Could not relax frame latency",
-					      hr);
+		if (hWaitable == NULL) {
+			throw HRError("Failed to GetFrameLatencyWaitableObject",
+				      hr);
 		}
 	}
 
@@ -321,7 +330,8 @@ void gs_device::InitCompiler()
 	int ver = 49;
 
 	while (ver > 30) {
-		sprintf(d3dcompiler, "D3DCompiler_%02d.dll", ver);
+		snprintf(d3dcompiler, sizeof(d3dcompiler),
+			 "D3DCompiler_%02d.dll", ver);
 
 		HMODULE module = LoadLibraryA(d3dcompiler);
 		if (module) {
@@ -1449,7 +1459,8 @@ void device_resize(gs_device_t *device, uint32_t cx, uint32_t cy)
 	}
 
 	const enum gs_color_space next_space =
-		get_next_space(device, device->curSwapChain->hwnd);
+		get_next_space(device, device->curSwapChain->hwnd,
+			       device->curSwapChain->swapDesc.SwapEffect);
 	device_resize_internal(device, cx, cy, next_space);
 }
 
@@ -1461,8 +1472,9 @@ enum gs_color_space device_get_color_space(gs_device_t *device)
 void device_update_color_space(gs_device_t *device)
 {
 	if (device->curSwapChain) {
-		const enum gs_color_space next_space =
-			get_next_space(device, device->curSwapChain->hwnd);
+		const enum gs_color_space next_space = get_next_space(
+			device, device->curSwapChain->hwnd,
+			device->curSwapChain->swapDesc.SwapEffect);
 		if (device->curSwapChain->space != next_space)
 			device_resize_internal(device, 0, 0, next_space);
 	} else {
@@ -2348,20 +2360,34 @@ void device_clear(gs_device_t *device, uint32_t clear_flags,
 	}
 }
 
+bool device_is_present_ready(gs_device_t *device)
+{
+	gs_swap_chain *const curSwapChain = device->curSwapChain;
+	bool ready = curSwapChain != nullptr;
+	if (ready) {
+		const HANDLE hWaitable = curSwapChain->hWaitable;
+		ready = (hWaitable == NULL) ||
+			WaitForSingleObject(hWaitable, 0) == WAIT_OBJECT_0;
+	} else {
+		blog(LOG_WARNING,
+		     "device_is_present_ready (D3D11): No active swap");
+	}
+
+	return ready;
+}
+
 void device_present(gs_device_t *device)
 {
 	gs_swap_chain *const curSwapChain = device->curSwapChain;
 	if (curSwapChain) {
-		/* Skip Present at frame limit to avoid stall */
-		const HANDLE hWaitable = curSwapChain->hWaitable;
-		if ((hWaitable == NULL) ||
-		    WaitForSingleObject(hWaitable, 0) == WAIT_OBJECT_0) {
-			const HRESULT hr = curSwapChain->swap->Present(
-				0, curSwapChain->presentFlags);
-			if (hr == DXGI_ERROR_DEVICE_REMOVED ||
-			    hr == DXGI_ERROR_DEVICE_RESET) {
-				device->RebuildDevice();
-			}
+		device->context->OMSetRenderTargets(0, nullptr, nullptr);
+		device->curFramebufferInvalidate = true;
+
+		const UINT interval = curSwapChain->hWaitable ? 1 : 0;
+		const HRESULT hr = curSwapChain->swap->Present(interval, 0);
+		if (hr == DXGI_ERROR_DEVICE_REMOVED ||
+		    hr == DXGI_ERROR_DEVICE_RESET) {
+			device->RebuildDevice();
 		}
 	} else {
 		blog(LOG_WARNING, "device_present (D3D11): No active swap");
@@ -3060,7 +3086,7 @@ extern "C" EXPORT bool device_p010_available(gs_device_t *device)
 extern "C" EXPORT bool device_is_monitor_hdr(gs_device_t *device, void *monitor)
 {
 	const HMONITOR hMonitor = static_cast<HMONITOR>(monitor);
-	return screen_supports_hdr(device, hMonitor);
+	return get_monitor_color_info(device, hMonitor).hdr;
 }
 
 extern "C" EXPORT void device_debug_marker_begin(gs_device_t *,

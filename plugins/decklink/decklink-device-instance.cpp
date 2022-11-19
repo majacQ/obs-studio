@@ -187,6 +187,9 @@ void DeckLinkDeviceInstance::HandleVideoFrame(
 	currentFrame.height = (uint32_t)frame->GetHeight();
 	currentFrame.timestamp = timestamp;
 
+	if (currentFrame.width == 0 || currentFrame.height == 0)
+		return;
+
 	obs_source_output_video2(
 		static_cast<DeckLinkInput *>(decklink)->GetSource(),
 		&currentFrame);
@@ -368,7 +371,6 @@ bool DeckLinkDeviceInstance::StartCapture(DeckLinkDeviceMode *mode_,
 	if (!device->GetInput(&input))
 		return false;
 
-	ComPtr<IDeckLinkConfiguration> deckLinkConfiguration;
 	HRESULT result = input->QueryInterface(IID_IDeckLinkConfiguration,
 					       (void **)&deckLinkConfiguration);
 	if (result != S_OK) {

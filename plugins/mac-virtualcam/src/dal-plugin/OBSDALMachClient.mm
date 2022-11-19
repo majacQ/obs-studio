@@ -101,29 +101,64 @@
 		break;
 	case MachMsgIdFrame:
 		VLog(@"Received frame message");
-		if (components.count >= 6) {
-			CGFloat width;
-			[components[0] getBytes:&width length:sizeof(width)];
-			CGFloat height;
-			[components[1] getBytes:&height length:sizeof(height)];
+
+		if (components.count < 4)
+			return;
+
+		@autoreleasepool {
+			NSMachPort *framePort = (NSMachPort *)components[0];
+
+			if (!framePort)
+				return;
+
+			IOSurfaceRef surface = IOSurfaceLookupFromMachPort(
+				[framePort machPort]);
+			[framePort invalidate];
+			mach_port_deallocate(mach_task_self(),
+					     [framePort machPort]);
+
+			if (!surface) {
+				ELog(@"Failed to obtain IOSurface from Mach port");
+				return;
+			}
+
+			/*
+			 * IOSurfaceLocks are only necessary on non Apple Silicon devices, as those have
+			 * unified memory. On Intel machines, the lock ensures that the IOSurface is copied back
+			 * from GPU memory to CPU memory so we can process the pixel buffer.
+			 */
+#ifndef __aarch64__
+			IOSurfaceLock(surface, kIOSurfaceLockReadOnly, NULL);
+#endif
+			CVPixelBufferRef frame;
+			CVPixelBufferCreateWithIOSurface(kCFAllocatorDefault,
+							 surface, NULL, &frame);
+#ifndef __aarch64__
+			IOSurfaceUnlock(surface, kIOSurfaceLockReadOnly, NULL);
+#endif
+			CFRelease(surface);
+
 			uint64_t timestamp;
-			[components[2] getBytes:&timestamp
+			[components[1] getBytes:&timestamp
 					 length:sizeof(timestamp)];
-			VLog(@"Received frame data: %fx%f (%llu)", width,
-			     height, timestamp);
-			NSData *frameData = components[3];
+
+			VLog(@"Received frame data: %zux%zu (%llu)",
+			     CVPixelBufferGetWidth(frame),
+			     CVPixelBufferGetHeight(frame), timestamp);
+
 			uint32_t fpsNumerator;
-			[components[4] getBytes:&fpsNumerator
+			[components[2] getBytes:&fpsNumerator
 					 length:sizeof(fpsNumerator)];
 			uint32_t fpsDenominator;
-			[components[5] getBytes:&fpsDenominator
+			[components[3] getBytes:&fpsDenominator
 					 length:sizeof(fpsDenominator)];
-			[self.delegate
-				receivedFrameWithSize:NSMakeSize(width, height)
-					    timestamp:timestamp
-					 fpsNumerator:fpsNumerator
-				       fpsDenominator:fpsDenominator
-					    frameData:frameData];
+
+			[self.delegate receivedPixelBuffer:frame
+						 timestamp:timestamp
+					      fpsNumerator:fpsNumerator
+					    fpsDenominator:fpsDenominator];
+
+			CVPixelBufferRelease(frame);
 		}
 		break;
 	case MachMsgIdStop:

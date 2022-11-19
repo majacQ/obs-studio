@@ -133,6 +133,7 @@ struct gs_exports {
 	void (*device_clear)(gs_device_t *device, uint32_t clear_flags,
 			     const struct vec4 *color, float depth,
 			     uint8_t stencil);
+	bool (*device_is_present_ready)(gs_device_t *device);
 	void (*device_present)(gs_device_t *device);
 	void (*device_flush)(gs_device_t *device);
 	void (*device_set_cull_mode)(gs_device_t *device,
@@ -360,6 +361,10 @@ struct gs_exports {
 							 uint32_t drm_format,
 							 uint64_t **modifiers,
 							 size_t *n_modifiers);
+	struct gs_texture *(*device_texture_create_from_pixmap)(
+		gs_device_t *device, uint32_t width, uint32_t height,
+		enum gs_color_format color_format, uint32_t target,
+		void *pixmap);
 #endif
 };
 

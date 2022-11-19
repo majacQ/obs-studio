@@ -33,7 +33,7 @@
 #endif
 
 /* dynamic bitrate coefficients */
-#define DBR_INC_TIMER (30ULL * SEC_TO_NSEC)
+#define DBR_INC_TIMER (4ULL * SEC_TO_NSEC)
 #define DBR_TRIGGER_USEC (200ULL * MSEC_TO_USEC)
 #define MIN_ESTIMATE_DURATION_MS 1000
 #define MAX_ESTIMATE_DURATION_MS 2000
@@ -154,7 +154,6 @@ static void *rtmp_stream_create(obs_data_t *settings, obs_output_t *output)
 	pthread_mutex_init_value(&stream->packets_mutex);
 
 	RTMP_LogSetCallback(log_rtmp);
-	RTMP_Init(&stream->rtmp);
 	RTMP_LogSetLevel(RTMP_LOGWARNING);
 
 	if (pthread_mutex_init(&stream->packets_mutex, NULL) != 0)
@@ -708,6 +707,15 @@ static void *send_thread(void *data)
 	}
 
 	set_output_error(stream);
+
+	if (silently_reconnecting(stream)) {
+		/* manually close the socket to prevent librtmp from sending
+		 * unpublish / deletestream messages when we call RTMP_Close,
+		 * since we want to re-use this stream when we reconnect */
+		RTMPSockBuf_Close(&stream->rtmp.m_sb);
+		stream->rtmp.m_sb.sb_socket = -1;
+	}
+
 	RTMP_Close(&stream->rtmp);
 
 	/* reset bitrate on stop */
@@ -795,7 +803,8 @@ static bool send_audio_header(struct rtmp_stream *stream, size_t idx,
 		return true;
 	}
 
-	obs_encoder_get_extra_data(aencoder, &header, &packet.size);
+	if (!obs_encoder_get_extra_data(aencoder, &header, &packet.size))
+		return false;
 	packet.data = bmemdup(header, packet.size);
 	return send_packet(stream, &packet, true, idx) >= 0;
 }
@@ -810,7 +819,8 @@ static bool send_video_header(struct rtmp_stream *stream)
 	struct encoder_packet packet = {
 		.type = OBS_ENCODER_VIDEO, .timebase_den = 1, .keyframe = true};
 
-	obs_encoder_get_extra_data(vencoder, &header, &size);
+	if (!obs_encoder_get_extra_data(vencoder, &header, &size))
+		return false;
 	packet.size = obs_parse_avc_header(&packet.data, header, size);
 	return send_packet(stream, &packet, true, 0) >= 0;
 }
@@ -1039,15 +1049,10 @@ static int try_connect(struct rtmp_stream *stream)
 
 	info("Connecting to RTMP URL %s...", stream->path.array);
 
-	// on reconnect we need to reset the internal variables of librtmp
-	// otherwise the data sent/received will not parse correctly on the other end
-	RTMP_Reset(&stream->rtmp);
+	// free any existing RTMP TLS context
+	RTMP_TLS_Free(&stream->rtmp);
 
-	// since we don't call RTMP_Init above, there's no other good place
-	// to reset this as doing it in RTMP_Close breaks the ugly RTMP
-	// authentication system
-	memset(&stream->rtmp.Link, 0, sizeof(stream->rtmp.Link));
-	stream->rtmp.last_error_code = 0;
+	RTMP_Init(&stream->rtmp);
 
 	if (!RTMP_SetupURL(&stream->rtmp, stream->path.array))
 		return OBS_OUTPUT_BAD_PATH;
@@ -1566,9 +1571,10 @@ static obs_properties_t *rtmp_stream_properties(void *unused)
 	struct netif_saddr_data addrs = {0};
 	obs_property_t *p;
 
-	obs_properties_add_int(props, OPT_DROP_THRESHOLD,
-			       obs_module_text("RTMPStream.DropThreshold"), 200,
-			       10000, 100);
+	p = obs_properties_add_int(props, OPT_DROP_THRESHOLD,
+				   obs_module_text("RTMPStream.DropThreshold"),
+				   200, 10000, 100);
+	obs_property_int_set_suffix(p, " ms");
 
 	p = obs_properties_add_list(props, OPT_BIND_IP,
 				    obs_module_text("RTMPStream.BindIP"),

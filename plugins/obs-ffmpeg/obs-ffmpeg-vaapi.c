@@ -54,7 +54,7 @@ struct vaapi_encoder {
 	AVBufferRef *vadevice_ref;
 	AVBufferRef *vaframes_ref;
 
-	AVCodec *vaapi;
+	const AVCodec *vaapi;
 	AVCodecContext *context;
 
 	AVPacket *packet;
@@ -77,7 +77,7 @@ struct vaapi_encoder {
 static const char *vaapi_getname(void *unused)
 {
 	UNUSED_PARAMETER(unused);
-	return "FFMPEG VAAPI";
+	return "FFMPEG VAAPI H.264";
 }
 
 static inline bool valid_format(enum video_format format)
@@ -351,11 +351,7 @@ static void *vaapi_create(obs_data_t *settings, obs_encoder_t *encoder)
 	enc = bzalloc(sizeof(*enc));
 	enc->encoder = encoder;
 
-	int vaapi_codec = (int)obs_data_get_int(settings, "vaapi_codec");
-
-	if (vaapi_codec == AV_CODEC_ID_H264) {
-		enc->vaapi = avcodec_find_encoder_by_name("h264_vaapi");
-	}
+	enc->vaapi = avcodec_find_encoder_by_name("h264_vaapi");
 
 	enc->first_packet = true;
 
@@ -517,7 +513,6 @@ static void vaapi_defaults(obs_data_t *settings)
 {
 	obs_data_set_default_string(settings, "vaapi_device",
 				    "/dev/dri/renderD128");
-	obs_data_set_default_int(settings, "vaapi_codec", AV_CODEC_ID_H264);
 	obs_data_set_default_int(settings, "profile",
 				 FF_PROFILE_H264_CONSTRAINED_BASELINE);
 	obs_data_set_default_int(settings, "level", 40);
@@ -634,25 +629,23 @@ static obs_properties_t *vaapi_properties(void *unused)
 		os_closedir(by_path_dir);
 	}
 	if (obs_property_list_item_count(list) == 0) {
-		char path[32] = "/dev/dri/renderD1";
+		char path[32];
 		for (int i = 28;; i++) {
-			sprintf(path, "/dev/dri/renderD1%d", i);
+			snprintf(path, sizeof(path), "/dev/dri/renderD1%d", i);
 			if (access(path, F_OK) == 0) {
-				char card[128] = "Card: ";
-				sprintf(card, "Card%d: %s", i - 28, path);
+				char card[128];
+				int ret = snprintf(card, sizeof(card),
+						   "Card%d: %s", i - 28, path);
+				if (ret >= sizeof(card))
+					blog(LOG_DEBUG,
+					     "obs-ffmpeg-vaapi: A format truncation may have occurred."
+					     " This can be ignored since it is quite improbable.");
 				obs_property_list_add_string(list, card, path);
 			} else {
 				break;
 			}
 		}
 	}
-
-	list = obs_properties_add_list(props, "vaapi_codec",
-				       obs_module_text("VAAPI.Codec"),
-				       OBS_COMBO_TYPE_LIST,
-				       OBS_COMBO_FORMAT_INT);
-
-	obs_property_list_add_int(list, "H.264 (default)", AV_CODEC_ID_H264);
 
 	list = obs_properties_add_list(props, "profile",
 				       obs_module_text("Profile"),
@@ -698,9 +691,10 @@ static obs_properties_t *vaapi_properties(void *unused)
 
 	obs_properties_add_int(props, "qp", "QP", 0, 51, 1);
 
-	obs_properties_add_int(props, "keyint_sec",
-			       obs_module_text("KeyframeIntervalSec"), 0, 20,
-			       1);
+	p = obs_properties_add_int(props, "keyint_sec",
+				   obs_module_text("KeyframeIntervalSec"), 0,
+				   20, 1);
+	obs_property_int_set_suffix(p, " s");
 
 	return props;
 }

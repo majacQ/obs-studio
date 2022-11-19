@@ -37,6 +37,11 @@
 #include <util/windows/HRError.hpp>
 #include <util/windows/ComPtr.hpp>
 
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+#include <QWinTaskbarButton>
+#include <QMainWindow>
+#endif
+
 using namespace std;
 
 static inline bool check_path(const char *data, const char *path,
@@ -169,33 +174,6 @@ uint32_t GetWindowsBuild()
 	}
 
 	return build;
-}
-
-void SetAeroEnabled(bool enable)
-{
-	static HRESULT(WINAPI * func)(UINT) = nullptr;
-	static bool failed = false;
-
-	if (!func) {
-		if (failed) {
-			return;
-		}
-
-		HMODULE dwm = LoadLibraryW(L"dwmapi");
-		if (!dwm) {
-			failed = true;
-			return;
-		}
-
-		func = reinterpret_cast<decltype(func)>(
-			GetProcAddress(dwm, "DwmEnableComposition"));
-		if (!func) {
-			failed = true;
-			return;
-		}
-	}
-
-	func(enable ? DWM_EC_ENABLECOMPOSITION : DWM_EC_DISABLECOMPOSITION);
 }
 
 bool IsAlwaysOnTop(QWidget *window)
@@ -464,3 +442,89 @@ bool IsRunningOnWine()
 
 	return false;
 }
+
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+QWinTaskbarButton *taskBtn;
+
+void TaskbarOverlayInit()
+{
+	QMainWindow *main = App()->GetMainWindow();
+	taskBtn = new QWinTaskbarButton(main);
+	taskBtn->setWindow(main->windowHandle());
+}
+
+void TaskbarOverlaySetStatus(TaskbarOverlayStatus status)
+{
+	if (status == TaskbarOverlayStatusInactive) {
+		taskBtn->clearOverlayIcon();
+		return;
+	}
+
+	QIcon icon;
+	if (status == TaskbarOverlayStatusActive) {
+		icon = QIcon::fromTheme("obs-active",
+					QIcon(":/res/images/active.png"));
+	} else {
+		icon = QIcon::fromTheme("obs-paused",
+					QIcon(":/res/images/paused.png"));
+	}
+	taskBtn->setOverlayIcon(icon);
+}
+#else
+
+HWND hwnd;
+void TaskbarOverlayInit()
+{
+	hwnd = (HWND)App()->GetMainWindow()->winId();
+}
+
+void TaskbarOverlaySetStatus(TaskbarOverlayStatus status)
+{
+	ITaskbarList4 *taskbarIcon;
+	auto hr = CoCreateInstance(CLSID_TaskbarList, NULL,
+				   CLSCTX_INPROC_SERVER,
+				   IID_PPV_ARGS(&taskbarIcon));
+
+	if (FAILED(hr)) {
+		taskbarIcon->Release();
+		return;
+	}
+
+	hr = taskbarIcon->HrInit();
+
+	if (FAILED(hr)) {
+		taskbarIcon->Release();
+		return;
+	}
+
+	if (status != TaskbarOverlayStatusInactive) {
+		QIcon qicon;
+		switch (status) {
+		case TaskbarOverlayStatusActive:
+			qicon = QIcon::fromTheme(
+				"obs-active", QIcon(":/res/images/active.png"));
+			break;
+		case TaskbarOverlayStatusPaused:
+			qicon = QIcon::fromTheme(
+				"obs-paused", QIcon(":/res/images/paused.png"));
+			break;
+		}
+
+		HICON hicon = nullptr;
+		if (!qicon.isNull()) {
+			Q_GUI_EXPORT HICON qt_pixmapToWinHICON(
+				const QPixmap &p);
+			hicon = qt_pixmapToWinHICON(
+				qicon.pixmap(GetSystemMetrics(SM_CXSMICON)));
+			if (!hicon)
+				return;
+		}
+
+		taskbarIcon->SetOverlayIcon(hwnd, hicon, nullptr);
+		DestroyIcon(hicon);
+	} else {
+		taskbarIcon->SetOverlayIcon(hwnd, nullptr, nullptr);
+	}
+	taskbarIcon->Release();
+}
+#endif

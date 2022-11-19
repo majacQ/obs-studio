@@ -85,6 +85,7 @@ struct defer_call {
 static void *defer_thread(void *unused)
 {
 	UNUSED_PARAMETER(unused);
+	os_set_thread_name("scripting: defer");
 
 	while (os_sem_wait(defer_call_semaphore) == 0) {
 		struct defer_call info;
@@ -456,5 +457,10 @@ bool obs_scripting_python_loaded(void)
 bool obs_scripting_python_runtime_linked(void)
 {
 	return (bool)true;
+}
+
+void obs_scripting_python_version(char *version, size_t version_length)
+{
+	version[0] = 0;
 }
 #endif

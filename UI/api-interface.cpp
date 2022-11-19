@@ -320,6 +320,23 @@ struct OBSStudioAPI : obs_frontend_callbacks {
 		return os_atomic_load_bool(&recording_paused);
 	}
 
+	bool obs_frontend_recording_split_file(void) override
+	{
+		if (os_atomic_load_bool(&recording_active) &&
+		    !os_atomic_load_bool(&recording_paused)) {
+			proc_handler_t *ph = obs_output_get_proc_handler(
+				main->outputHandler->fileOutput);
+			uint8_t stack[128];
+			calldata cd;
+			calldata_init_fixed(&cd, stack, sizeof(stack));
+			proc_handler_call(ph, "split_file", &cd);
+			bool result = calldata_bool(&cd, "split_file_enabled");
+			return result;
+		} else {
+			return false;
+		}
+	}
+
 	void obs_frontend_replay_buffer_start(void) override
 	{
 		QMetaObject::invokeMethod(main, "StartReplayBuffer");
@@ -623,6 +640,26 @@ struct OBSStudioAPI : obs_frontend_callbacks {
 	const char *obs_frontend_get_locale_string(const char *string) override
 	{
 		return Str(string);
+	}
+
+	bool obs_frontend_is_theme_dark(void) override
+	{
+		return App()->IsThemeDark();
+	}
+
+	char *obs_frontend_get_last_recording(void) override
+	{
+		return bstrdup(main->outputHandler->lastRecordingPath.c_str());
+	}
+
+	char *obs_frontend_get_last_screenshot(void) override
+	{
+		return bstrdup(main->lastScreenshot.c_str());
+	}
+
+	char *obs_frontend_get_last_replay(void) override
+	{
+		return bstrdup(main->lastReplay.c_str());
 	}
 
 	void on_load(obs_data_t *settings) override

@@ -21,8 +21,12 @@ endif()
 include(UseSWIG)
 
 set_source_files_properties(
-  obspython.i PROPERTIES USE_TARGET_INCLUDE_DIRECTORIES TRUE SWIG_FLAGS
-                                                             "-builtin;-py3")
+  obspython.i
+  PROPERTIES
+    USE_TARGET_INCLUDE_DIRECTORIES TRUE
+    SWIG_FLAGS
+    "$<IF:$<AND:$<BOOL:${OS_POSIX}>,$<NOT:$<BOOL:${OS_MACOS}>>>,-py3,-py3-stable-abi>"
+)
 
 swig_add_library(
   obspython
@@ -32,12 +36,8 @@ swig_add_library(
 
 target_link_libraries(obspython PRIVATE OBS::scripting OBS::libobs)
 
-set_target_properties(
-  obspython
-  PROPERTIES
-    SWIG_COMPILE_DEFINITIONS
-    "SWIG_TYPE_TABLE=obspython;Py_ENABLE_SHARED=1;SWIG_PYTHON_INTERPRETER_NO_DEBUG"
-)
+list(APPEND _SWIG_DEFINITIONS "SWIG_TYPE_TABLE=obspython" "Py_ENABLE_SHARED=1"
+     "SWIG_PYTHON_INTERPRETER_NO_DEBUG")
 
 target_compile_features(obspython PRIVATE cxx_auto_type c_std_11)
 
@@ -46,22 +46,23 @@ target_compile_definitions(
                     SWIG_PYTHON_INTERPRETER_NO_DEBUG)
 
 if(ENABLE_UI)
+  list(APPEND _SWIG_DEFINITIONS "ENABLE_UI")
   target_link_libraries(obspython PRIVATE OBS::frontend-api)
 
   target_compile_definitions(obspython PRIVATE ENABLE_UI)
 endif()
 
+set_target_properties(obspython PROPERTIES SWIG_COMPILE_DEFINITIONS
+                                           "${_SWIG_DEFINITIONS}")
+
 if(OS_WINDOWS)
   set_target_properties(
-    obspython
-    PROPERTIES
-      SWIG_COMPILE_DEFINITIONS
-      "SWIG_TYPE_TABLE=obspython;Py_ENABLE_SHARED=1;SWIG_PYTHON_INTERPRETER_NO_DEBUG;MS_NO_COREDLL"
-  )
+    obspython PROPERTIES SWIG_COMPILE_DEFINITIONS
+                         "${_SWIG_DEFINITIONS};MS_NO_COREDLL")
 
   target_link_libraries(obspython PRIVATE Python::Python)
 
-  target_compile_options(obspython PRIVATE /wd4100)
+  target_compile_options(obspython PRIVATE /wd4100 /wd4197)
 
   if(MSVC)
     add_custom_command(
@@ -99,8 +100,6 @@ elseif(OS_POSIX)
   target_link_libraries(obspython PRIVATE Python::Python)
 
   target_compile_options(obspython PRIVATE -Wno-unused-parameter)
-
-  set_target_properties(obspython PROPERTIES PREFIX "")
 
 endif()
 

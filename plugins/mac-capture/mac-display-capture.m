@@ -150,7 +150,6 @@ static inline void display_stream_update(struct display_capture *dc,
 					 CGDisplayStreamUpdateRef update_ref)
 {
 	UNUSED_PARAMETER(display_time);
-	UNUSED_PARAMETER(update_ref);
 
 	if (status == kCGDisplayStreamFrameStatusStopped) {
 		os_event_signal(dc->disp_finished);
@@ -251,9 +250,6 @@ void load_crop(struct display_capture *dc, obs_data_t *settings);
 
 static void *display_capture_create(obs_data_t *settings, obs_source_t *source)
 {
-	UNUSED_PARAMETER(source);
-	UNUSED_PARAMETER(settings);
-
 	struct display_capture *dc = bzalloc(sizeof(struct display_capture));
 
 	dc->source = source;
@@ -609,34 +605,20 @@ static obs_properties_t *display_capture_properties(void *unused)
 				    __attribute__((unused))) {
 		char dimension_buffer[4][12];
 		char name_buffer[256];
-		sprintf(dimension_buffer[0], "%u",
-			(uint32_t)[screen frame].size.width);
-		sprintf(dimension_buffer[1], "%u",
-			(uint32_t)[screen frame].size.height);
-		sprintf(dimension_buffer[2], "%d",
-			(int32_t)[screen frame].origin.x);
-		sprintf(dimension_buffer[3], "%d",
-			(int32_t)[screen frame].origin.y);
+		snprintf(dimension_buffer[0], sizeof(dimension_buffer[0]), "%u",
+			 (uint32_t)[screen frame].size.width);
+		snprintf(dimension_buffer[1], sizeof(dimension_buffer[0]), "%u",
+			 (uint32_t)[screen frame].size.height);
+		snprintf(dimension_buffer[2], sizeof(dimension_buffer[0]), "%d",
+			 (int32_t)[screen frame].origin.x);
+		snprintf(dimension_buffer[3], sizeof(dimension_buffer[0]), "%d",
+			 (int32_t)[screen frame].origin.y);
 
-#if __MAC_OS_X_VERSION_MAX_ALLOWED >= __MAC_10_15
-		if (__builtin_available(macOS 10.15, *)) {
-			sprintf(name_buffer,
-				"%.200s: %.12sx%.12s @ %.12s,%.12s",
-				[[screen localizedName] UTF8String],
-				dimension_buffer[0], dimension_buffer[1],
-				dimension_buffer[2], dimension_buffer[3]);
-		} else
-#endif
-		{
-			char disp_num_buffer[11];
-			sprintf(disp_num_buffer, "%lu", (unsigned long)index);
-			sprintf(name_buffer,
-				"%.189s %.10s: %.12sx%.12s @ %.12s,%.12s",
-				obs_module_text("DisplayCapture.Display"),
-				disp_num_buffer, dimension_buffer[0],
-				dimension_buffer[1], dimension_buffer[2],
-				dimension_buffer[3]);
-		}
+		snprintf(name_buffer, sizeof(name_buffer),
+			 "%.200s: %.12sx%.12s @ %.12s,%.12s",
+			 [[screen localizedName] UTF8String],
+			 dimension_buffer[0], dimension_buffer[1],
+			 dimension_buffer[2], dimension_buffer[3]);
 
 		obs_property_list_add_int(list, name_buffer, index);
 	}];

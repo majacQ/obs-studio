@@ -319,6 +319,21 @@ static int physical_cores = 0;
 static int logical_cores = 0;
 static bool core_count_initialized = false;
 
+bool os_get_emulation_status(void)
+{
+#ifdef __aarch64__
+	return false;
+#else
+	int rosettaTranslated = 0;
+	size_t size = sizeof(rosettaTranslated);
+	if (sysctlbyname("sysctl.proc_translated", &rosettaTranslated, &size,
+			 NULL, 0) == -1)
+		return false;
+
+	return rosettaTranslated == 1;
+#endif
+}
+
 static void os_get_cores_internal(void)
 {
 	if (core_count_initialized)
@@ -369,6 +384,28 @@ uint64_t os_get_sys_free_size(void)
 		return 0;
 
 	return vmstat.free_count * vm_page_size;
+}
+
+static uint64_t total_memory = 0;
+static bool total_memory_initialized = false;
+
+static void os_get_sys_total_size_internal()
+{
+	total_memory_initialized = true;
+
+	size_t size;
+	int ret;
+
+	size = sizeof(total_memory);
+	ret = sysctlbyname("hw.memsize", &total_memory, &size, NULL, 0);
+}
+
+uint64_t os_get_sys_total_size(void)
+{
+	if (!total_memory_initialized)
+		os_get_sys_total_size_internal();
+
+	return total_memory;
 }
 
 #ifndef MACH_TASK_BASIC_INFO

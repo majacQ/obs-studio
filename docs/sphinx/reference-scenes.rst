@@ -20,7 +20,7 @@ specific transforms and/or filtering
 Scene Item Transform Structure (obs_transform_info)
 ---------------------------------------------------
 
-.. type:: struct obs_transform_info
+.. struct:: obs_transform_info
 
    Scene item transform structure.
 
@@ -80,7 +80,7 @@ Scene Item Transform Structure (obs_transform_info)
 Scene Item Crop Structure (obs_sceneitem_crop)
 ----------------------------------------------
 
-.. type:: struct obs_sceneitem_crop
+.. struct:: obs_sceneitem_crop
 
    Scene item crop structure.
 
@@ -104,7 +104,7 @@ Scene Item Crop Structure (obs_sceneitem_crop)
 Scene Item Order Info Structure (\*obs_sceneitem_order_info)
 ------------------------------------------------------------
 
-.. type:: struct obs_sceneitem_order_info
+.. struct:: obs_sceneitem_order_info
 
    Scene item order info structure.
 
@@ -208,7 +208,7 @@ General Scene Functions
 .. function:: obs_scene_t *obs_scene_get_ref(obs_scene_t *scene)
 
    Returns an incremented reference if still valid, otherwise returns
-   *NULL*.
+   *NULL*. Release with :c:func:`obs_scene_release()`.
 
 ---------------------
 
@@ -265,6 +265,8 @@ General Scene Functions
 .. function:: void obs_scene_enum_items(obs_scene_t *scene, bool (*callback)(obs_scene_t*, obs_sceneitem_t*, void*), void *param)
 
    Enumerates scene items within a scene.
+
+   For scripting, use :py:func:`obs_scene_enum_items`.
 
 ---------------------
 
@@ -343,7 +345,7 @@ Scene Item Functions
 ---------------------
 
 .. function:: obs_data_t *obs_scene_save_transform_states(obs_scene_t *scene, bool all_items)
-.. function:: void obs_scene_load_transform_states(oconst char *states)
+.. function:: void obs_scene_load_transform_states(const char *states)
 
    Saves all the transformation states for the sceneitms in scene. When all_items is false, it
    will only save selected items
@@ -547,7 +549,8 @@ Scene Item Functions
 
    :return: An incremented reference to the private settings of the
             scene item.  Allows the front-end to set custom information
-            which is saved with the scene item
+            which is saved with the scene item. Release with
+            :c:func:`obs_data_release()`.
 
 ---------------------
 

@@ -14,6 +14,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
+      - name: Setup Environment
+        id: setup
+        run: |
+          echo "commitHash=$(git describe --exact-match --tags 2> /dev/null || git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
       - name: Bump Version Number
         shell: bash
         if: github.event_name == 'push'
@@ -36,10 +40,16 @@ jobs:
           SCOPY="copyright = '([A-Za-z0-9, ]+)'"
           RCOPY="copyright = '2017-$(date +"%Y"), Hugh Bailey'"
           sed -i -E -e "s/${SVER}/${RVER}/g" -e "s/${SREL}/${RREL}/g" -e "s/${SCOPY}/${RCOPY}/g" docs/sphinx/conf.py
-      - uses: ammaraskar/sphinx-action@master
+      - uses: totaldebug/sphinx-publish-action@1.2.0
         with:
-          docs-folder: "docs/sphinx/"
+          sphinx_src: 'docs/sphinx'
+          build_only: True
+          target_branch: 'master'
+          target_path: '../home/_build'
+          pre_build_commands: 'pip install -Iv sphinx==5.1.1'
       - uses: actions/upload-artifact@v3
         with:
-          name: OBS Studio Documentation (HTML)
-          path: docs/sphinx/_build/html/
+          name: 'OBS Studio Docs ${{ steps.setup.outputs.commitHash }}'
+          path: |
+            ${{ runner.temp }}/_github_home/_build
+            !${{ runner.temp }}/_github_home/_build/.doctrees

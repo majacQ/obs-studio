@@ -26,7 +26,7 @@ is the dedicated header for implementing services.
 Service Definition Structure
 ----------------------------
 
-.. type:: struct obs_service_info
+.. struct:: obs_service_info
 
    Service definition structure.
 
@@ -139,6 +139,15 @@ Service Definition Structure
 
    :return: The output type that should be used with this service
 
+.. member:: const char **(*get_supported_video_codecs)(void *data)
+
+   (Optional)
+
+   :return: A string pointer array of the supported video codecs, should
+            be stored by the plugin so the caller does not need to free
+            the data manually (typically best to use strlist_split to
+            generate this)
+
 
 General Service Functions
 -------------------------
@@ -163,7 +172,7 @@ General Service Functions
 .. function:: obs_service_t *obs_service_create(const char *id, const char *name, obs_data_t *settings, obs_data_t *hotkey_data)
 
    Creates a service with the specified settings.
-  
+
    The "service" context is used for encoding video/audio data.  Use
    obs_service_release to release it.
 
@@ -191,7 +200,7 @@ General Service Functions
 .. function:: obs_service_t *obs_service_get_ref(obs_service_t *service)
 
    Returns an incremented reference if still valid, otherwise returns
-   *NULL*.
+   *NULL*. Release with :c:func:`obs_service_release()`.
 
 ---------------------
 
@@ -227,7 +236,8 @@ General Service Functions
 
 .. function:: obs_data_t *obs_service_defaults(const char *id)
 
-   :return: An incremented reference to the service's default settings
+   :return: An incremented reference to the service's default settings.
+            Release with :c:func:`obs_data_release()`.
 
 ---------------------
 
@@ -245,7 +255,8 @@ General Service Functions
 
 .. function:: obs_data_t *obs_service_get_settings(const obs_service_t *service)
 
-   :return: An incremented reference to the service's settings
+   :return: An incremented reference to the service's settings. Release with
+            :c:func:`obs_data_release()`.
 
 ---------------------
 
@@ -282,10 +293,18 @@ General Service Functions
 .. function:: void obs_service_apply_encoder_settings(obs_service_t *service, obs_data_t *video_encoder_settings, obs_data_t *audio_encoder_settings)
 
    Applies service-specific video encoder settings.
-  
+
    :param  video_encoder_settings: Video encoder settings.  Can be *NULL*
    :param  audio_encoder_settings: Audio encoder settings.  Can be *NULL*
 
+---------------------
+
+.. function:: const char **obs_service_get_supported_video_codecs(const obs_service_t *service)
+
+   :return: An array of string pointers containing the supported codecs
+            for the service, terminated with a *NULL* pointer. Does not
+            need to be freed
+
 .. ---------------------------------------------------------------------------
 
-.. _libobs/obs-service.h: https://github.com/jp9000/obs-studio/blob/master/libobs/obs-service.h
+.. _libobs/obs-service.h: https://github.com/obsproject/obs-studio/blob/master/libobs/obs-service.h

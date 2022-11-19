@@ -1421,6 +1421,16 @@ bool gs_query_dmabuf_modifiers_for_format(uint32_t drm_format,
 		graphics->device, drm_format, modifiers, n_modifiers);
 }
 
+gs_texture_t *gs_texture_create_from_pixmap(uint32_t width, uint32_t height,
+					    enum gs_color_format color_format,
+					    uint32_t target, void *pixmap)
+{
+	graphics_t *graphics = thread_graphics;
+
+	return graphics->exports.device_texture_create_from_pixmap(
+		graphics->device, width, height, color_format, target, pixmap);
+}
+
 #endif
 
 gs_texture_t *gs_cubetexture_create(uint32_t size,
@@ -1931,6 +1941,16 @@ void gs_clear(uint32_t clear_flags, const struct vec4 *color, float depth,
 
 	graphics->exports.device_clear(graphics->device, clear_flags, color,
 				       depth, stencil);
+}
+
+bool gs_is_present_ready(void)
+{
+	graphics_t *graphics = thread_graphics;
+
+	if (!gs_valid("gs_is_present_ready"))
+		return false;
+
+	return graphics->exports.device_is_present_ready(graphics->device);
 }
 
 void gs_present(void)

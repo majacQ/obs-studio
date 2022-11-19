@@ -110,6 +110,7 @@ private:
 	inline void calculateBallisticsForChannel(int channelNr, uint64_t ts,
 						  qreal timeSinceLastRedraw);
 
+	inline int convertToInt(float number);
 	void paintInputMeter(QPainter &painter, int x, int y, int width,
 			     int height, float peakHold);
 	void paintHMeter(QPainter &painter, int x, int y, int width, int height,
@@ -167,6 +168,13 @@ private:
 	qreal magnitudeIntegrationTime;
 	qreal peakHoldDuration;
 	qreal inputPeakHoldDuration;
+
+	QColor p_backgroundNominalColor;
+	QColor p_backgroundWarningColor;
+	QColor p_backgroundErrorColor;
+	QColor p_foregroundNominalColor;
+	QColor p_foregroundWarningColor;
+	QColor p_foregroundErrorColor;
 
 	uint64_t lastRedrawTime = 0;
 	int channels = 0;
@@ -322,4 +330,6 @@ public:
 
 	void EnableSlider(bool enable);
 	inline void SetContextMenu(QMenu *cm) { contextMenu = cm; }
+
+	void refreshColors();
 };
